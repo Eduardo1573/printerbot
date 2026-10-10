@@ -23,8 +23,10 @@ SCAN_HELP_EMAIL = (
     "The next scan is delivered to you. If several people are waiting, scans are delivered in order."
 )
 SCAN_HELP_ESCL = (
-    "put a page on the scanner glass and press it (or send /scan). After each page choose "
-    "➕ Scan more, 🔄 Rescan last page or 📄 Make document — you get one PDF with all pages."
+    "load a stack of pages in the document feeder (top tray), or put one page on the glass, "
+    "and press it (or send /scan). With pages in the feeder the whole stack is scanned; "
+    "otherwise the glass. After each scan choose ➕ Scan more, 🔄 Rescan last page or "
+    "📄 Make document — you get one PDF with all pages."
 )
 SCAN_HELP_DISABLED = "scanning is not enabled on this installation."
 
@@ -53,7 +55,19 @@ SCAN_RECEIVED = "📄 Scan received."
 SCAN_SCANNING = "🔄 Scanning page {page}...\n\nKeep the lid closed until it finishes."
 SCAN_PAGE_DONE = "✅ Page {page} scanned.\n\n📄 {total} page(s) in the document so far."
 SCAN_PAGE_REPLACED = "🔄 Page {page} rescanned.\n\n📄 {total} page(s) in the document so far."
-SCAN_NEXT_PAGE = "Put the next page on the glass, then press “➕ Scan more”."
+SCAN_NEXT_PAGE = "Load more pages in the feeder or put one on the glass, then press “➕ Scan more”."
+SCAN_SCANNING_FEEDER = (
+    "🔄 Scanning the pages from the document feeder...\n\nA big stack can take a few minutes."
+)
+SCAN_FEEDER_DONE = (
+    "✅ Pages {first}–{last} scanned from the feeder ({count} pages).\n\n"
+    "📄 {total} page(s) in the document so far."
+)
+SCAN_FEEDER_REPLACED = (
+    "🔄 Last page replaced with {count} pages from the feeder.\n\n📄 {total} page(s) in the document so far."
+)
+SCAN_PREVIEWS_LIMITED = "(previews of the first {shown} pages above)"
+SCAN_PAGES_DROPPED = "⚠️ {dropped} page(s) were not added: a document can have at most {max_pages} pages."
 SCAN_DOCUMENT_READY = "📄 Your document: {pages} page(s)."
 SCAN_ASSEMBLING = "📎 Assembling the document..."
 SCAN_SESSION_CANCELLED = "✖️ Scan cancelled. Scanned pages were discarded."

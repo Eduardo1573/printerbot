@@ -37,7 +37,19 @@ NS = {
     "pwg": "http://www.pwg.org/schemas/2010/12/sm",
 }
 
-SCAN_TIMEOUT = 180
+SCAN_TIMEOUT = 180  # one page from the glass, or the wait for any single page
+FEEDER_SCAN_TIMEOUT = 900  # a full feeder (~35 sheets) in color
+
+# Paper size in 1/300 inch for feeder scans (the glass is scanned in full).
+FEEDER_PAGE_SIZE = {"a4": (2480, 3508), "letter": (2550, 3300)}
+
+ADF_PROBLEMS = {
+    "ScannerAdfJam": "Paper jam in the document feeder.",
+    "ScannerAdfDoorOpen": "The document feeder cover is open.",
+    "ScannerAdfHatchOpen": "The document feeder cover is open.",
+    "ScannerAdfMispick": "The document feeder failed to pick up a page. Straighten the stack and try again.",
+    "ScannerAdfMultipickDetected": "The document feeder picked up several pages at once. Straighten the stack and try again.",
+}
 
 
 def build_scan_settings(
@@ -128,12 +140,27 @@ class EsclScanner(PullScanSource):
     def busy(self) -> bool:
         return self._lock.locked()
 
-    async def get_scan(self) -> ScanResult:
+    async def detect_source(self) -> str:
+        """Feeder if paper is loaded there (and the setting allows it), otherwise the glass."""
+        configured = self._s.escl_input_source
+        if configured != "Auto":
+            return configured
+        try:
+            timeout = aiohttp.ClientTimeout(total=15, sock_connect=self._s.printer_connect_timeout)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                _, adf_state = parse_state(await self._get_text(session, "ScannerStatus"))
+        except (aiohttp.ClientError, OSError, TimeoutError, ET.ParseError, PrinterProtocolError):
+            return "Platen"  # get_scan() reports the real connection problem
+        return "Feeder" if adf_state == "ScannerAdfLoaded" else "Platen"
+
+    async def get_scan(self, source: str | None = None) -> ScanResult:
+        source = source or await self.detect_source()
         if self._lock.locked():
             raise PrinterBusyError("scan in progress", user_message="Another scan is in progress. Try again shortly.")
         async with self._lock:
+            limit = FEEDER_SCAN_TIMEOUT if source == "Feeder" else SCAN_TIMEOUT
             try:
-                return await asyncio.wait_for(self._scan(), timeout=SCAN_TIMEOUT)
+                return await asyncio.wait_for(self._scan(source), timeout=limit)
             except TimeoutError as exc:
                 raise PrinterTimeoutError("eSCL scan timed out", user_message="The scanner did not respond in time.") from exc
             except (aiohttp.ClientConnectionError, OSError) as exc:
@@ -143,26 +170,35 @@ class EsclScanner(PullScanSource):
             except aiohttp.ClientError as exc:
                 raise PrinterProtocolError(f"{type(exc).__name__}: {exc}") from exc
 
-    async def _scan(self) -> ScanResult:
+    async def _scan(self, source: str) -> ScanResult:
         timeout = aiohttp.ClientTimeout(total=None, sock_connect=self._s.printer_connect_timeout, sock_read=90)
         async with aiohttp.ClientSession(timeout=timeout) as session:
             status_xml = await self._get_text(session, "ScannerStatus")
             state, adf_state = parse_state(status_xml)
             if state and state != "Idle":
                 raise PrinterBusyError(f"scanner state {state}", user_message="The scanner is busy. Try again shortly.")
-            if self._s.escl_input_source == "Feeder" and adf_state and adf_state != "ScannerAdfLoaded":
-                raise PrinterError(
-                    f"adf state {adf_state}", user_message="No paper in the document feeder. Load the pages and try again."
-                )
+            if source == "Feeder":
+                if adf_state in ADF_PROBLEMS:
+                    raise PrinterError(f"adf state {adf_state}", user_message=ADF_PROBLEMS[adf_state])
+                if adf_state and adf_state != "ScannerAdfLoaded":
+                    raise PrinterError(
+                        f"adf state {adf_state}",
+                        user_message="No paper in the document feeder. Load the pages and try again.",
+                    )
 
-            caps = parse_capabilities(await self._get_text(session, "ScannerCapabilities"), self._s.escl_input_source)
+            caps = parse_capabilities(await self._get_text(session, "ScannerCapabilities"), source)
+            width, height = caps["max_width"], caps["max_height"]
+            if source == "Feeder":
+                # The feeder's maximum length is legal-size; ask for the real paper size.
+                page_w, page_h = FEEDER_PAGE_SIZE[self._s.printer_paper_size]
+                width, height = min(width, page_w), min(height, page_h)
             body = build_scan_settings(
-                input_source=self._s.escl_input_source,
+                input_source=source,
                 resolution=self._s.escl_resolution,
                 color_mode=self._s.escl_color_mode,
                 document_format=self._s.escl_document_format,
-                width=caps["max_width"],
-                height=caps["max_height"],
+                width=width,
+                height=height,
             )
             async with session.post(
                 urljoin(self._base, "ScanJobs"), data=body, headers={"Content-Type": "text/xml"}, ssl=self._ssl
@@ -174,16 +210,18 @@ class EsclScanner(PullScanSource):
                 job_url = job_url_from_location(self._base, r.headers["Location"])
 
             try:
-                files = await self._collect_documents(session, job_url)
+                files = await self._collect_documents(session, job_url, source)
             except BaseException:
                 # Don't leave a half-finished job on the printer: it blocks the scanner.
                 await self._delete_job(session, job_url)
                 raise
         if not files:
             raise PrinterProtocolError("scanner returned no documents")
-        return ScanResult(files=files, source="escl")
+        return ScanResult(files=files, source="feeder" if source == "Feeder" else "glass")
 
-    async def _collect_documents(self, session: aiohttp.ClientSession, job_url: str) -> list[ScannedFile]:
+    async def _collect_documents(
+        self, session: aiohttp.ClientSession, job_url: str, source: str
+    ) -> list[ScannedFile]:
         files: list[ScannedFile] = []
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         next_url = job_url.rstrip("/") + "/NextDocument"
@@ -209,7 +247,8 @@ class EsclScanner(PullScanSource):
                 mime = (r.content_type or self._s.escl_document_format).split(";")[0]
             ext = "pdf" if mime == "application/pdf" else "jpg"
             files.append(ScannedFile(buf.getvalue(), mime, f"scan_{stamp}_{len(files) + 1}.{ext}"))
-            if self._s.escl_input_source == "Platen":
+            started = time.monotonic()  # the 503 wait limit applies per page
+            if source == "Platen":
                 # A flatbed job yields exactly one document; release the job explicitly.
                 await self._delete_job(session, job_url)
                 break

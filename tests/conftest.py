@@ -103,7 +103,7 @@ class FakePullSource(PullScanSource):
         self.result = result
         self.error = error
 
-    async def get_scan(self) -> ScanResult:
+    async def get_scan(self, source: str | None = None) -> ScanResult:
         if self.error:
             raise self.error
         assert self.result is not None

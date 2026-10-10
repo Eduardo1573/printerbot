@@ -1,7 +1,11 @@
 """Multi-page scan sessions for pull scanners (eSCL).
 
-Flow: 📷 Scan → page 1 → [➕ Scan more | 🔄 Rescan last page | 📄 Make document | ✖️ Cancel]
+Flow: 📷 Scan → page(s) → [➕ Scan more | 🔄 Rescan last page | 📄 Make document | ✖️ Cancel]
 → ... → 📄 Make document → one merged PDF.
+
+Each scan uses the document feeder when paper is loaded there (the whole stack becomes
+pages), otherwise the glass (one page). Pages are stored one file per page, so feeder
+stacks and glass pages can be mixed freely and "Rescan last page" replaces exactly one.
 
 There is one physical scanner, so only one session exists at a time. A session left
 idle for `scan_session_timeout` seconds is discarded and the scanner is freed. Scanned
@@ -44,12 +48,23 @@ class ScanSessionError(Exception):
         self.user_message = user_message
 
 
+MAX_PREVIEWS = 10  # a Telegram album holds at most 10 photos
+
+
 @dataclass(slots=True)
 class PageScanned:
-    page_number: int  # 1-based position of the page just scanned
+    page_number: int  # 1-based position of the first new page
     total_pages: int
-    preview_jpeg: bytes | None
+    preview_jpeg: bytes | None  # preview of the first new page
     replaced: bool = False
+    last_page: int = 0  # position of the last new page (== page_number for one page)
+    previews: list[bytes] = field(default_factory=list)  # up to MAX_PREVIEWS new pages
+    source: str = "glass"  # "glass" | "feeder"
+    dropped: int = 0  # feeder pages discarded because of SCAN_MAX_PAGES
+
+    @property
+    def count(self) -> int:
+        return self.last_page - self.page_number + 1
 
 
 @dataclass(slots=True)
@@ -93,6 +108,21 @@ async def render_preview(pdf_path: Path, out_path: Path) -> bytes | None:
     if proc.returncode != 0 or not out_path.exists():
         return None
     return out_path.read_bytes()
+
+
+def _split_pages(content: bytes) -> list[bytes]:
+    """One single-page PDF per page (a feeder scan may return many pages in one PDF)."""
+    reader = PdfReader(io.BytesIO(content), strict=False)
+    if len(reader.pages) == 1:
+        return [content]
+    pages: list[bytes] = []
+    for page in reader.pages:
+        writer = PdfWriter()
+        writer.add_page(page)
+        buf = io.BytesIO()
+        writer.write(buf)
+        pages.append(buf.getvalue())
+    return pages
 
 
 def _merge(pages: list[Path]) -> bytes:
@@ -196,8 +226,18 @@ class ScanSessionService:
 
     # ------------------------------------------------------------------ actions
 
-    async def scan_page(self, telegram_id: int, *, replace_last: bool = False) -> PageScanned:
-        """Scan one page into the user's session (creating it if needed)."""
+    async def detect_source(self) -> str:
+        """"Feeder" when paper is loaded in the document feeder, otherwise "Platen" (glass)."""
+        return await self._scanner.detect_source()
+
+    async def scan_page(
+        self, telegram_id: int, *, replace_last: bool = False, source: str | None = None
+    ) -> PageScanned:
+        """Scan into the user's session (creating it if needed).
+
+        The glass yields one page; the feeder yields the whole stack. With `replace_last`,
+        the new page(s) take the place of the last page.
+        """
         async with self._lock:
             session = await self._session_for(telegram_id, create=not replace_last)
             if session.busy:
@@ -210,42 +250,71 @@ class ScanSessionService:
             session.busy = True
         try:
             started = time.monotonic()
-            result = await self._scanner.get_scan()
-            pdf = next((f for f in result.files if f.mime_type == "application/pdf"), None)
-            if pdf is None:
+            result = await self._scanner.get_scan(source)
+            pdfs = [f for f in result.files if f.mime_type == "application/pdf"]
+            if not pdfs:
                 raise PrinterError("scanner returned no PDF", user_message="The scanner returned an unexpected file.")
+            try:
+                new_pages = [p for f in pdfs for p in await asyncio.to_thread(_split_pages, f.content)]
+            except Exception:
+                raise PrinterError(
+                    "unreadable scan PDF", user_message="The scanner returned a damaged file. Try again."
+                ) from None
+            if not new_pages:
+                raise PrinterError("empty scan", user_message="The scanner returned no pages. Try again.")
+
             replacing = replace_last and bool(session.pages)
             index = len(session.pages) - 1 if replacing else len(session.pages)
             kept = session.pages[:index] + session.pages[index + 1 :]
-            if sum(p.stat().st_size for p in kept) + len(pdf.content) > self._s.max_scan_size_bytes:
+            room = self._s.scan_max_pages - len(kept)
+            dropped = max(0, len(new_pages) - room)
+            new_pages = new_pages[:room]
+            if sum(p.stat().st_size for p in kept) + sum(len(p) for p in new_pages) > self._s.max_scan_size_bytes:
                 raise ScanSessionError(
-                    f"This page would make the document larger than {self._s.max_scan_size_mb} MB. "
+                    f"This would make the document larger than {self._s.max_scan_size_mb} MB. "
                     "Press “📄 Make document” to finish."
                 )
-            page_path = session.workdir / f"page-{index + 1:03d}-{time.monotonic_ns()}.pdf"
-            page_path.write_bytes(pdf.content)
+            paths = []
+            for offset, content in enumerate(new_pages):
+                path = session.workdir / f"page-{index + offset + 1:03d}-{time.monotonic_ns()}.pdf"
+                path.write_bytes(content)
+                paths.append(path)
             if replacing:
                 session.pages[index].unlink(missing_ok=True)
-                session.pages[index] = page_path
-            else:
-                session.pages.append(page_path)
-            replaced = replacing
-            preview = None
-            try:
-                preview = await self._render_preview(page_path, session.workdir / "preview.jpg")
-            except Exception:
-                log.warning("scan_preview_failed")
+            session.pages[index : index + (1 if replacing else 0)] = paths
+
+            previews: list[bytes] = []
+            for i, path in enumerate(paths[:MAX_PREVIEWS]):
+                try:
+                    jpeg = await self._render_preview(path, session.workdir / f"preview-{i}.jpg")
+                except Exception:
+                    jpeg = None
+                    log.warning("scan_preview_failed")
+                if jpeg:
+                    previews.append(jpeg)
             event(
                 log,
                 "scan_page_scanned",
                 telegram_id=telegram_id,
-                page=index + 1,
+                source=result.source,
+                first_page=index + 1,
+                new_pages=len(paths),
                 pages=len(session.pages),
-                replaced=replaced,
-                bytes=len(pdf.content),
+                replaced=replacing,
+                dropped=dropped,
+                bytes=sum(len(p) for p in new_pages),
                 seconds=round(time.monotonic() - started, 1),
             )
-            return PageScanned(index + 1, len(session.pages), preview, replaced)
+            return PageScanned(
+                page_number=index + 1,
+                total_pages=len(session.pages),
+                preview_jpeg=previews[0] if previews else None,
+                replaced=replacing,
+                last_page=index + len(paths),
+                previews=previews,
+                source=result.source,
+                dropped=dropped,
+            )
         except (PrinterError, ScanSessionError) as exc:
             if isinstance(exc, PrinterError):
                 event(log, "scan_failed", level=logging.WARNING, telegram_id=telegram_id, error=str(exc))

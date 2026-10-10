@@ -75,7 +75,8 @@ class Settings(BaseSettings):
     escl_port: int = 8080
     escl_path: str = "/eSCL"
     escl_use_tls: bool = False
-    escl_input_source: Literal["Platen", "Feeder"] = "Platen"
+    # Auto: document feeder when paper is loaded there, otherwise the glass.
+    escl_input_source: Literal["Auto", "Platen", "Feeder"] = "Auto"
     escl_resolution: int = 300
     escl_color_mode: Literal["RGB24", "Grayscale8", "BlackAndWhite1"] = "RGB24"
     # Multi-page sessions merge per-page PDFs, so the scanner must return PDF.

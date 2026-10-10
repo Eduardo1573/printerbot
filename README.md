@@ -73,8 +73,9 @@ Yes, **if your home router can run a WireGuard (VPN) client**. Full research wit
   Scan → E-mail on the printer → the printer sends the scan to the bot's SMTP receiver → the **oldest
   non-expired pending request** gets it → it's delivered to that user. If nobody is waiting, the bot replies
   `550` and the printer shows a send error. The scan is never delivered to anyone.
-* **Scan (eSCL mode, e.g. M130fn):** the user puts a page on the glass and presses **📷 Scan** (or `/scan`). The
-  bot scans it (300 dpi, color) and sends a preview with **➕ Scan more**, **🔄 Rescan last page**,
+* **Scan (eSCL mode, e.g. M130fn):** the user loads a stack in the document feeder (or puts one page on the glass)
+  and presses **📷 Scan** (or `/scan`). With paper in the feeder the whole stack is scanned, otherwise the glass
+  (300 dpi, color). The bot then sends previews with **➕ Scan more**, **🔄 Rescan last page**,
   **📄 Make document** and **✖️ Cancel**. *Make document* merges all pages into one PDF. Only one session exists at a
   time (one scanner): others are told the scanner is busy. A session idle for `SCAN_SESSION_TIMEOUT` (10 min) is
   discarded and its owner is notified.

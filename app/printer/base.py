@@ -117,7 +117,12 @@ class PullScanSource(ABC):
     """The bot asks the printer to scan (e.g. eSCL). The requester owns the result."""
 
     @abstractmethod
-    async def get_scan(self) -> ScanResult: ...
+    async def get_scan(self, source: str | None = None) -> ScanResult:
+        """Scan from `source` ("Platen" = glass, "Feeder" = document feeder)."""
+
+    async def detect_source(self) -> str:
+        """Where the next scan should come from; scanners without a feeder use the glass."""
+        return "Platen"
 
 
 # IPP printer-state-reasons keywords -> plain words (shared by all IPP printers).

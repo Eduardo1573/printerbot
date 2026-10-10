@@ -28,22 +28,45 @@ def page_pdf(width: int) -> bytes:
     return buf.getvalue()
 
 
+def stack_pdf(widths_: list[int]) -> bytes:
+    """One PDF with several pages, like a feeder scan."""
+    writer = PdfWriter()
+    for w in widths_:
+        writer.add_blank_page(width=w, height=842)
+    buf = io.BytesIO()
+    writer.write(buf)
+    return buf.getvalue()
+
+
 class SequenceScanner(PullScanSource):
-    """Returns page widths 100, 101, 102, ... on successive scans."""
+    """Returns page widths 100, 101, 102, ... on successive pages.
+
+    Set `feeder_pages` to N to make the next scan a feeder stack of N pages.
+    """
 
     def __init__(self) -> None:
         self.calls = 0
+        self.next_width = 100
         self.error: Exception | None = None
         self.delay = 0.0
+        self.feeder_pages = 0
+        self.sources: list[str | None] = []
 
-    async def get_scan(self) -> ScanResult:
+    async def detect_source(self) -> str:
+        return "Feeder" if self.feeder_pages else "Platen"
+
+    async def get_scan(self, source: str | None = None) -> ScanResult:
+        self.sources.append(source)
         if self.delay:
             await asyncio.sleep(self.delay)
         if self.error:
             raise self.error
-        width = 100 + self.calls
         self.calls += 1
-        return ScanResult([ScannedFile(page_pdf(width), "application/pdf", "scan.pdf")], source="escl")
+        count, self.feeder_pages = (self.feeder_pages or 1), 0
+        ws = list(range(self.next_width, self.next_width + count))
+        self.next_width += count
+        content = page_pdf(ws[0]) if count == 1 else stack_pdf(ws)
+        return ScanResult([ScannedFile(content, "application/pdf", "scan.pdf")], source="feeder" if count > 1 else "glass")
 
 
 def widths(content: bytes) -> list[int]:
@@ -180,11 +203,16 @@ async def test_page_limit(sessions):
 async def test_size_limit(session_factory, tmp_path, scanner, auth_service):
     await authenticated(auth_service, 1)
     settings = make_settings(tmp_path, scan_mode="escl", max_scan_size_mb=1)
-    huge = ScannedFile(b"%PDF-" + b"0" * (2 * 1024 * 1024), "application/pdf", "x.pdf")
+    writer = PdfWriter()
+    writer.add_blank_page(width=595, height=842)
+    writer.add_metadata({"/Padding": "0" * (2 * 1024 * 1024)})  # a real, 2 MB, one-page PDF
+    buf = io.BytesIO()
+    writer.write(buf)
+    huge = ScannedFile(buf.getvalue(), "application/pdf", "x.pdf")
 
     class Huge(PullScanSource):
-        async def get_scan(self):
-            return ScanResult([huge], "escl")
+        async def get_scan(self, source=None):
+            return ScanResult([huge], "glass")
 
     service = ScanSessionService(session_factory, settings, Huge(), AsyncMock(), preview_renderer=fake_preview)
     with pytest.raises(ScanSessionError, match="larger than"):

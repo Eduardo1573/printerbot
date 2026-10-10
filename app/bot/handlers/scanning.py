@@ -6,7 +6,7 @@ import math
 from aiogram import Bot, F, Router
 from aiogram.exceptions import TelegramAPIError
 from aiogram.filters import Command
-from aiogram.types import BufferedInputFile, CallbackQuery, Message
+from aiogram.types import BufferedInputFile, CallbackQuery, InputMediaPhoto, Message
 
 from app.bot import texts
 from app.bot.keyboards import (
@@ -25,7 +25,7 @@ from app.config import ScanMode, Settings
 from app.database.models import User
 from app.printer.base import PrinterError
 from app.services.scan_service import ScanService
-from app.services.scan_session import ScanSessionError, ScanSessionService
+from app.services.scan_session import PageScanned, ScanSessionError, ScanSessionService
 
 router = Router(name="scanning")
 router.message.middleware(AuthRequiredMiddleware())
@@ -46,7 +46,7 @@ async def scan_entry(
     scan_sessions: ScanSessionService | None,
 ) -> None:
     if settings.scan_mode is ScanMode.ESCL and scan_sessions is not None:
-        await _scan_page(message, bot, user.telegram_id, scan_sessions, replace_last=False)
+        await _scan_page(message, bot, user.telegram_id, scan_sessions, settings, replace_last=False)
     elif settings.scan_mode is ScanMode.EMAIL:
         await receive_scan(message, user, scan_service, settings)
     else:
@@ -63,14 +63,41 @@ async def _strip_buttons(bot: Bot, chat_id: int, message_id: int | None) -> None
         await bot.edit_message_reply_markup(chat_id=chat_id, message_id=message_id, reply_markup=None)
 
 
+def scan_caption(result: PageScanned, max_pages: int) -> str:
+    if result.count == 1:
+        template = texts.SCAN_PAGE_REPLACED if result.replaced else texts.SCAN_PAGE_DONE
+        text = template.format(page=result.page_number, total=result.total_pages)
+    elif result.replaced:
+        text = texts.SCAN_FEEDER_REPLACED.format(count=result.count, total=result.total_pages)
+    else:
+        text = texts.SCAN_FEEDER_DONE.format(
+            first=result.page_number, last=result.last_page, count=result.count, total=result.total_pages
+        )
+    if result.count > len(result.previews) > 0:
+        text += "\n" + texts.SCAN_PREVIEWS_LIMITED.format(shown=len(result.previews))
+    if result.dropped:
+        text += "\n\n" + texts.SCAN_PAGES_DROPPED.format(dropped=result.dropped, max_pages=max_pages)
+    return text + "\n\n" + texts.SCAN_NEXT_PAGE
+
+
 async def _scan_page(
-    message: Message, bot: Bot, telegram_id: int, sessions: ScanSessionService, *, replace_last: bool
+    message: Message,
+    bot: Bot,
+    telegram_id: int,
+    sessions: ScanSessionService,
+    settings: Settings,
+    *,
+    replace_last: bool,
 ) -> None:
-    current = sessions.page_count(telegram_id)
-    page = current if replace_last and current else current + 1
-    status = await message.answer(texts.SCAN_SCANNING.format(page=page))
+    source = await sessions.detect_source()
+    if source == "Feeder":
+        status = await message.answer(texts.SCAN_SCANNING_FEEDER)
+    else:
+        current = sessions.page_count(telegram_id)
+        page = current if replace_last and current else current + 1
+        status = await message.answer(texts.SCAN_SCANNING.format(page=page))
     try:
-        result = await sessions.scan_page(telegram_id, replace_last=replace_last)
+        result = await sessions.scan_page(telegram_id, replace_last=replace_last, source=source)
     except (ScanSessionError, PrinterError) as exc:
         reason = exc.user_message
         text = reason if isinstance(exc, ScanSessionError) else texts.SCAN_FAILED.format(reason=reason)
@@ -84,23 +111,33 @@ async def _scan_page(
                 await _strip_buttons(bot, telegram_id, previous)
         return
 
-    template = texts.SCAN_PAGE_REPLACED if result.replaced else texts.SCAN_PAGE_DONE
-    caption = template.format(page=result.page_number, total=result.total_pages) + "\n\n" + texts.SCAN_NEXT_PAGE
+    caption = scan_caption(result, settings.scan_max_pages)
     controls: Message = status
-    if result.preview_jpeg:
-        try:
+    try:
+        if len(result.previews) == 1:
             controls = await message.answer_photo(
-                BufferedInputFile(result.preview_jpeg, filename=f"page-{result.page_number}.jpg"),
+                BufferedInputFile(result.previews[0], filename=f"page-{result.page_number}.jpg"),
                 caption=caption,
                 reply_markup=scan_session_actions(),
             )
+        elif len(result.previews) > 1:
+            # An album can't carry buttons: send it, then the caption with the buttons.
+            await message.answer_media_group(
+                [
+                    InputMediaPhoto(media=BufferedInputFile(jpeg, filename=f"page-{result.page_number + i}.jpg"))
+                    for i, jpeg in enumerate(result.previews)
+                ]
+            )
+            controls = await message.answer(caption, reply_markup=scan_session_actions())
+        else:
+            await status.edit_text(caption, reply_markup=scan_session_actions())
+        if controls is not status:
             with contextlib.suppress(TelegramAPIError):
                 await status.delete()
-        except TelegramAPIError:
-            controls = status
+    except TelegramAPIError:
+        controls = status
+        with contextlib.suppress(TelegramAPIError):
             await status.edit_text(caption, reply_markup=scan_session_actions())
-    else:
-        await status.edit_text(caption, reply_markup=scan_session_actions())
     previous = sessions.set_controls_message(telegram_id, controls.message_id)
     if previous != controls.message_id:
         await _strip_buttons(bot, telegram_id, previous)
@@ -116,14 +153,16 @@ async def _session_callback_message(callback: CallbackQuery) -> Message | None:
 
 
 @router.callback_query(F.data.in_({CB_SCAN_MORE, CB_SCAN_RESCAN}))
-async def scan_more(callback: CallbackQuery, bot: Bot, user: User, scan_sessions: ScanSessionService | None) -> None:
+async def scan_more(
+    callback: CallbackQuery, bot: Bot, user: User, settings: Settings, scan_sessions: ScanSessionService | None
+) -> None:
     if scan_sessions is None:
         await callback.answer()
         return
     message = await _session_callback_message(callback)
     if message is not None:
         await _scan_page(
-            message, bot, user.telegram_id, scan_sessions, replace_last=callback.data == CB_SCAN_RESCAN
+            message, bot, user.telegram_id, scan_sessions, settings, replace_last=callback.data == CB_SCAN_RESCAN
         )
 
 
