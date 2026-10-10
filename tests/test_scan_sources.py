@@ -11,7 +11,8 @@ from aiohttp import web
 from aiohttp.test_utils import TestServer
 
 from app.printer.base import PrinterBusyError, ScanResult
-from app.printer.escl import EsclScanner, build_scan_settings, parse_capabilities
+from app.printer.base import PrinterProtocolError
+from app.printer.escl import EsclScanner, build_scan_settings, job_url_from_location, parse_capabilities
 from app.printer.smtp_receiver import SmtpScanReceiver, extract_scan
 from tests.conftest import make_settings, pdf_bytes
 
@@ -178,7 +179,7 @@ async def fake_escl():
     servers: list[TestServer] = []
 
     async def start(state="Idle"):
-        calls = {"jobs": 0, "next": 0}
+        calls = {"jobs": 0, "next": 0, "deleted": 0, "fail_next": False}
 
         async def status(_):
             return web.Response(text=STATUS.format(state=state), content_type="text/xml")
@@ -189,15 +190,20 @@ async def fake_escl():
         async def jobs(request):
             assert b"<pwg:InputSource>Platen" in await request.read()
             calls["jobs"] += 1
-            return web.Response(status=201, headers={"Location": "/eSCL/ScanJobs/abc"})
+            # Like a real M130fn: absolute URL with the printer's LAN IP and port 80,
+            # which the bot cannot reach through port forwarding.
+            return web.Response(status=201, headers={"Location": "http://192.168.1.23:80/eSCL/ScanJobs/abc"})
 
         async def next_doc(_):
             calls["next"] += 1
+            if calls["fail_next"]:
+                return web.Response(status=500)
             if calls["next"] == 1:
                 return web.Response(status=503)  # still scanning
             return web.Response(body=b"%PDF-1.4 scanned", content_type="application/pdf")
 
         async def delete(_):
+            calls["deleted"] += 1
             return web.Response(status=200)
 
         app = web.Application()
@@ -231,3 +237,28 @@ async def test_escl_busy(fake_escl, tmp_path):
     with pytest.raises(PrinterBusyError):
         await scanner.get_scan()
     assert calls["jobs"] == 0
+
+
+def test_job_url_ignores_printer_lan_address():
+    base = "http://203.0.113.7:47080/eSCL/"
+    assert job_url_from_location(base, "http://192.168.1.23:80/eSCL/ScanJobs/1001") == (
+        "http://203.0.113.7:47080/eSCL/ScanJobs/1001"
+    )
+    assert job_url_from_location(base, "/eSCL/ScanJobs/1001") == "http://203.0.113.7:47080/eSCL/ScanJobs/1001"
+    assert job_url_from_location(base, "ScanJobs/7") == "http://203.0.113.7:47080/eSCL/ScanJobs/7"
+
+
+async def test_escl_scan_uses_configured_host_and_releases_job(fake_escl, tmp_path):
+    port, calls = await fake_escl()
+    scanner = EsclScanner(make_settings(tmp_path, scan_mode="escl", printer_host="127.0.0.1", escl_port=port))
+    await scanner.get_scan()  # would fail if it followed http://192.168.1.23:80/...
+    assert calls["deleted"] == 1
+
+
+async def test_escl_failure_releases_job(fake_escl, tmp_path):
+    port, calls = await fake_escl()
+    calls["fail_next"] = True
+    scanner = EsclScanner(make_settings(tmp_path, scan_mode="escl", printer_host="127.0.0.1", escl_port=port))
+    with pytest.raises(PrinterProtocolError):
+        await scanner.get_scan()
+    assert calls["deleted"] == 1  # the stuck job was cancelled

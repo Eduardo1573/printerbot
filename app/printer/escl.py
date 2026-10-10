@@ -14,7 +14,7 @@ import ssl
 import time
 import xml.etree.ElementTree as ET
 from datetime import datetime
-from urllib.parse import urljoin
+from urllib.parse import urljoin, urlsplit, urlunsplit
 
 import aiohttp
 
@@ -99,6 +99,19 @@ def parse_state(xml_text: str) -> tuple[str | None, str | None]:
     return root.findtext("pwg:State", namespaces=NS), root.findtext("scan:AdfState", namespaces=NS)
 
 
+def job_url_from_location(base_url: str, location: str) -> str:
+    """Resolve the ScanJobs `Location` header against OUR base URL.
+
+    HP printers return an absolute URL with their LAN address and port 80
+    (e.g. http://192.168.1.23:80/eSCL/ScanJobs/1001), which is unreachable through
+    port forwarding / NAT. Only the path is used; scheme, host and port stay ours.
+    """
+    base = urlsplit(base_url)
+    loc = urlsplit(location)
+    path = loc.path if loc.path.startswith("/") else urlsplit(urljoin(base_url, loc.path)).path
+    return urlunsplit((base.scheme, base.netloc, path, loc.query, ""))
+
+
 class EsclScanner(PullScanSource):
     def __init__(self, settings: Settings) -> None:
         self._s = settings
@@ -158,9 +171,14 @@ class EsclScanner(PullScanSource):
                     raise PrinterBusyError("scanner returned 503")
                 if r.status != 201 or "Location" not in r.headers:
                     raise PrinterProtocolError(f"ScanJobs returned HTTP {r.status}")
-                job_url = urljoin(self._base, r.headers["Location"])
+                job_url = job_url_from_location(self._base, r.headers["Location"])
 
-            files = await self._collect_documents(session, job_url)
+            try:
+                files = await self._collect_documents(session, job_url)
+            except BaseException:
+                # Don't leave a half-finished job on the printer: it blocks the scanner.
+                await self._delete_job(session, job_url)
+                raise
         if not files:
             raise PrinterProtocolError("scanner returned no documents")
         return ScanResult(files=files, source="escl")
@@ -193,13 +211,16 @@ class EsclScanner(PullScanSource):
             files.append(ScannedFile(buf.getvalue(), mime, f"scan_{stamp}_{len(files) + 1}.{ext}"))
             if self._s.escl_input_source == "Platen":
                 # A flatbed job yields exactly one document; release the job explicitly.
-                try:
-                    async with session.delete(job_url, ssl=self._ssl):
-                        pass
-                except aiohttp.ClientError:
-                    pass
+                await self._delete_job(session, job_url)
                 break
         return files
+
+    async def _delete_job(self, session: aiohttp.ClientSession, job_url: str) -> None:
+        try:
+            async with session.delete(job_url, ssl=self._ssl, timeout=aiohttp.ClientTimeout(total=10)):
+                pass
+        except (aiohttp.ClientError, OSError, TimeoutError):
+            pass
 
     async def _get_text(self, session: aiohttp.ClientSession, path: str) -> str:
         async with session.get(urljoin(self._base, path), ssl=self._ssl) as r:
