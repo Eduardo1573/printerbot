@@ -51,7 +51,7 @@ Yes, **if your home router can run a WireGuard (VPN) client**. Full research wit
    │       ├─ PrintService ─ Ghostscript ─ IPP ────┼──┐
    │       ├─ ScanService (FIFO queue)             │  │
    │       │    └─ SMTP receiver :2525 ◄───────────┼──┼─┐
-   │       └─ PostgreSQL (users, scan_requests,    │  │ │
+   │       └─ SQLite file (users, scan_requests,   │  │ │
    │                      print_jobs)              │  │ │
    │  wg0 10.8.0.1  ◄──── WireGuard UDP 51820 ─────┼──┘ │
    └───────────────────────────────────────────────┘    │
@@ -148,12 +148,11 @@ cp .env.example .env
 chmod 600 .env
 # generate secrets:
 echo "AUTH_CODE=$(openssl rand -base64 18)"
-echo "POSTGRES_PASSWORD=$(openssl rand -hex 24)"
 echo "SCAN_SMTP_PASSWORD=$(openssl rand -hex 16)"
 nano .env
 ```
 
-Set at least `TELEGRAM_BOT_TOKEN`, `AUTH_CODE`, `POSTGRES_PASSWORD`, `PRINTER_MODEL`, `PRINTER_HOST`,
+Set at least `TELEGRAM_BOT_TOKEN`, `AUTH_CODE`, `PRINTER_MODEL`, `PRINTER_HOST`,
 `SCAN_MODE`, and `SCAN_SMTP_PASSWORD` (email mode). Every option is described in [`.env.example`](.env.example).
 
 ### 7. Configure the printer
@@ -323,7 +322,6 @@ Ready-made recipes:
 | 22/tcp | Internet | SSH |
 | 51820/udp | Internet | WireGuard (key-authenticated) |
 | 2525/tcp | `10.8.0.1` only (tunnel) | Scan-to-E-mail receiver |
-| 5432 | not published | PostgreSQL (Docker network only) |
 
 ### Without a VPN-capable router: port forwarding (insecure, but works today)
 
@@ -374,7 +372,7 @@ Copies are **not configurable**: every job is sent with `copies=1`, and the data
 * SQL only through the SQLAlchemy ORM (parameterised).
 * Logs are structured JSON. A redaction filter scrubs the bot token, auth code and SMTP password, even
   inside tracebacks. Document contents and filenames are never logged.
-* Containers: non-root user, read-only root filesystem, `cap_drop: ALL`, `no-new-privileges`. Postgres isn't published.
+* Containers: non-root user, read-only root filesystem, `cap_drop: ALL`, `no-new-privileges`.
 * Network: the printer is never exposed to the Internet. The SMTP receiver only listens on the tunnel and
   accepts connections only from `SCAN_SMTP_ALLOWED_NETWORKS` with SMTP AUTH.
 
@@ -384,10 +382,8 @@ Copies are **not configurable**: every job is sent with `copies=1`, and the data
 
 ```bash
 docker compose logs -f bot                       # structured logs
-docker compose pull && docker compose up -d --build   # update after git pull
-docker compose exec postgres pg_dump -U printerbot printerbot > backup.sql
-docker compose exec postgres psql -U printerbot -c \
-  "select id, telegram_user_id, status, created_at from scan_requests order by id desc limit 20;"
+git pull && docker compose up -d --build        # update
+docker compose cp bot:/data/printerbot.db ./backup-$(date +%F).db   # back up the SQLite database
 ```
 
 ### Troubleshooting

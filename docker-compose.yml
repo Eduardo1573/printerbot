@@ -1,26 +1,6 @@
 name: printerbot
 
 services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-printerbot}
-      POSTGRES_USER: ${POSTGRES_USER:-printerbot}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-    networks: [backend]
-    # No published ports: the database is reachable only by the bot.
-    logging: &logging
-      driver: json-file
-      options: { max-size: "10m", max-file: "5" }
-
   bot:
     build:
       context: .
@@ -29,10 +9,9 @@ services:
     restart: unless-stopped
     env_file: .env
     environment:
-      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-printerbot}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-printerbot}
-    depends_on:
-      postgres:
-        condition: service_healthy
+      # SQLite file on the persistent "botdata" volume. Set DATABASE_URL in .env to use
+      # PostgreSQL instead (postgresql+asyncpg://user:pass@host:5432/db).
+      DATABASE_URL: ${DATABASE_URL:-sqlite+aiosqlite:////data/printerbot.db}
     ports:
       # Scan-to-E-mail receiver (SCAN_MODE=email). Set SMTP_BIND_IP=10.8.0.1 (WireGuard
       # address) so it is reachable only through the tunnel. The default keeps it
@@ -42,16 +21,15 @@ services:
     tmpfs:
       - /tmp:size=16m
     volumes:
+      - botdata:/data
       - printtmp:/var/tmp/printerbot
     security_opt:
       - no-new-privileges:true
     cap_drop: [ALL]
-    networks: [backend]
-    logging: *logging
+    logging:
+      driver: json-file
+      options: { max-size: "10m", max-file: "5" }
 
 volumes:
-  pgdata:
+  botdata:
   printtmp:
-
-networks:
-  backend:
