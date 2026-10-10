@@ -77,8 +77,12 @@ class Settings(BaseSettings):
     escl_use_tls: bool = False
     escl_input_source: Literal["Platen", "Feeder"] = "Platen"
     escl_resolution: int = 300
-    escl_color_mode: Literal["RGB24", "Grayscale8", "BlackAndWhite1"] = "Grayscale8"
-    escl_document_format: Literal["application/pdf", "image/jpeg"] = "application/pdf"
+    escl_color_mode: Literal["RGB24", "Grayscale8", "BlackAndWhite1"] = "RGB24"
+    # Multi-page sessions merge per-page PDFs, so the scanner must return PDF.
+    escl_document_format: Literal["application/pdf"] = "application/pdf"
+    # Idle seconds before an unfinished multi-page scan session is discarded.
+    scan_session_timeout: int = Field(default=600, ge=60)
+    scan_max_pages: int = Field(default=50, ge=1, le=200)
 
     # --- Runtime ---------------------------------------------------------
     temp_dir: Path = Path("/var/tmp/printerbot")

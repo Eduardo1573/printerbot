@@ -73,10 +73,13 @@ Yes, **if your home router can run a WireGuard (VPN) client**. Full research wit
   Scan → E-mail on the printer → the printer sends the scan to the bot's SMTP receiver → the **oldest
   non-expired pending request** gets it → it's delivered to that user. If nobody is waiting, the bot replies
   `550` and the printer shows a send error. The scan is never delivered to anyone.
-* **Scan (eSCL mode):** the user presses 📥 Receive Scan, then **▶️ Start scan** → the bot asks the scanner
-  to scan → the result goes to that user.
+* **Scan (eSCL mode, e.g. M130fn):** the user puts a page on the glass and presses **📷 Scan** (or `/scan`). The
+  bot scans it (300 dpi, color) and sends a preview with **➕ Scan more**, **🔄 Rescan last page**,
+  **📄 Make document** and **✖️ Cancel**. *Make document* merges all pages into one PDF. Only one session exists at a
+  time (one scanner): others are told the scanner is busy. A session idle for `SCAN_SESSION_TIMEOUT` (10 min) is
+  discarded and its owner is notified.
 
-### Scan ownership rules
+### Scan ownership rules (email mode)
 
 * One active request per user (enforced with a DB partial unique index).
 * Queue: `A → B → C` waiting means the next scan goes to A, then B, then C (FIFO, row-locked claim, so it's
@@ -226,8 +229,8 @@ docker compose exec bot python -m app.tools.probe --print /tmp/test.pdf
 **Scan → E-mail** → choose the *Telegram bot* profile/contact → Start. You'll get *"📄 Scan received."* and the PDF.
 Press Scan without anyone waiting and the printer shows a send error. That's intended.
 
-**eSCL mode:** first run `docker compose run --rm bot python -m app.tools.probe --scan /tmp` with a page on the glass.
-If it saves a file, eSCL works on your unit. In Telegram: **📥 Receive Scan** → **▶️ Start scan**.
+**eSCL mode (M130fn):** put a page on the glass → **📷 Scan** → you get a preview of page 1 → swap the page →
+**➕ Scan more** → … → **📄 Make document** → one PDF with all pages. **🔄 Rescan last page** replaces a bad page.
 
 ---
 

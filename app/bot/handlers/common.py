@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+
 from aiogram import F, Router
 from aiogram.filters import Command, CommandStart
 from aiogram.types import CallbackQuery, Message
@@ -9,6 +11,7 @@ from app.bot.keyboards import main_menu, remove_menu
 from app.config import ScanMode, Settings
 from app.database.models import User
 from app.services.auth_service import AuthService
+from app.services.scan_session import ScanSessionError, ScanSessionService
 
 router = Router(name="common")
 fallback_router = Router(name="fallback")
@@ -40,11 +43,17 @@ async def cmd_help(message: Message, user: User, settings: Settings) -> None:
 
 
 @router.message(Command("logout"))
-async def cmd_logout(message: Message, user: User, auth_service: AuthService) -> None:
+async def cmd_logout(
+    message: Message, user: User, auth_service: AuthService, scan_sessions: ScanSessionService | None = None
+) -> None:
     if not user.is_authenticated:
         await message.answer(texts.NOT_LOGGED_IN, reply_markup=remove_menu())
         return
     await auth_service.logout(user.telegram_id)
+    if scan_sessions is not None:
+        # An unfinished scan session must not outlive the user's access.
+        with contextlib.suppress(ScanSessionError):
+            await scan_sessions.cancel(user.telegram_id)
     await message.answer(texts.LOGGED_OUT, reply_markup=remove_menu())
 
 

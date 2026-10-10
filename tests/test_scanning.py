@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import timedelta
+from unittest.mock import MagicMock
 
 import pytest
 from sqlalchemy import select, update
@@ -9,9 +10,9 @@ from sqlalchemy import select, update
 from app.bot import texts
 from app.bot.handlers import scanning
 from app.database.models import ScanRequest, ScanStatus, utcnow
-from app.printer.base import PrinterBusyError, PrinterUnavailableError, ScannedFile, ScanResult
-from app.services.scan_service import ScanRequestError, ScanService
-from tests.conftest import FakeNotifier, FakePullSource, answered_texts, authenticated, make_message, make_settings
+from app.printer.base import ScannedFile, ScanResult
+from app.services.scan_service import ScanService
+from tests.conftest import FakeNotifier, answered_texts, authenticated, make_message, make_settings
 
 
 def scan(name: str = "scan.pdf") -> ScanResult:
@@ -183,45 +184,6 @@ async def test_restart_recovery_fails_processing_requests(scan_service, users, s
     assert (await statuses(session_factory))[1] == ScanStatus.FAILED
 
 
-# ------------------------------------------------------------------ pull mode (eSCL)
-
-
-async def test_pull_scan_delivers_to_requester(session_factory, tmp_path, users, notifier):
-    settings = make_settings(tmp_path, scan_mode="escl")
-    service = ScanService(session_factory, settings, notifier, pull_source=FakePullSource(result=scan("pulled")))
-    await service.create_request(3)
-    await service.run_pull_scan(3)
-    assert [(uid, r.files[0].filename) for uid, r in notifier.scans] == [(3, "pulled")]
-    assert (await statuses(session_factory))[3] == ScanStatus.COMPLETED
-
-
-async def test_pull_scan_requires_pending_request(session_factory, tmp_path, users, notifier):
-    settings = make_settings(tmp_path, scan_mode="escl")
-    service = ScanService(session_factory, settings, notifier, pull_source=FakePullSource(result=scan()))
-    with pytest.raises(ScanRequestError):
-        await service.run_pull_scan(1)
-
-
-async def test_pull_scan_busy_keeps_request_pending(session_factory, tmp_path, users, notifier):
-    settings = make_settings(tmp_path, scan_mode="escl")
-    service = ScanService(session_factory, settings, notifier, pull_source=FakePullSource(error=PrinterBusyError()))
-    await service.create_request(1)
-    with pytest.raises(PrinterBusyError):
-        await service.run_pull_scan(1)
-    assert (await statuses(session_factory))[1] == ScanStatus.PENDING
-
-
-async def test_pull_scan_printer_offline_fails_request(session_factory, tmp_path, users, notifier):
-    settings = make_settings(tmp_path, scan_mode="escl")
-    source = FakePullSource(error=PrinterUnavailableError("no route"))
-    service = ScanService(session_factory, settings, notifier, pull_source=source)
-    await service.create_request(1)
-    with pytest.raises(PrinterUnavailableError):
-        await service.run_pull_scan(1)
-    assert (await statuses(session_factory))[1] == ScanStatus.FAILED
-    assert notifier.scans == []
-
-
 # ------------------------------------------------------------------ handler
 
 
@@ -240,11 +202,11 @@ async def test_receive_scan_button_reports_queue(scan_service, auth_service, set
     assert "1 request(s) ahead" in answered_texts(message)[0]
 
 
-async def test_receive_scan_when_disabled(session_factory, tmp_path, auth_service, notifier):
+async def test_scan_entry_when_disabled(session_factory, tmp_path, auth_service, notifier):
     settings = make_settings(tmp_path, scan_mode="disabled")
     service = ScanService(session_factory, settings, notifier)
     user = await authenticated(auth_service, 1)
     message = make_message("📥 Receive Scan", user_id=1)
-    await scanning.receive_scan(message, user, service, settings)
+    await scanning.scan_entry(message, MagicMock(), user, settings, service, None)
     assert answered_texts(message) == [texts.SCAN_DISABLED]
     assert await service.get_active_request(1) is None

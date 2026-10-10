@@ -21,7 +21,10 @@ SCAN_HELP_EMAIL = (
     "press it, then start “Scan to E-mail” on the printer's touchscreen. "
     "The next scan is delivered to you. If several people are waiting, scans are delivered in order."
 )
-SCAN_HELP_ESCL = "press it, place the document on the scanner, then press “▶️ Start scan”."
+SCAN_HELP_ESCL = (
+    "put a page on the scanner glass and press it (or send /scan). After each page choose "
+    "➕ Scan more, 🔄 Rescan last page or 📄 Make document — you get one PDF with all pages."
+)
 SCAN_HELP_DISABLED = "scanning is not enabled on this installation."
 
 PRINT_PROMPT = "📄 Send the PDF you want to print as a file.\n\nEvery document is printed exactly once (1 copy)."
@@ -44,14 +47,15 @@ SCAN_READY_EMAIL_QUEUED = (
     "yours is scan #{position}.\n\n"
     "Expires in {minutes} min."
 )
-SCAN_READY_ESCL = (
-    "📥 Ready to receive a scan.\n\n"
-    "Place your document on the scanner glass{feeder}, then press “▶️ Start scan”.\n\n"
-    "Expires in {minutes} min."
-)
 SCAN_ALREADY_PENDING = "📥 You already have an active scan request (position #{position}). Waiting for the scanner..."
 SCAN_RECEIVED = "📄 Scan received."
-SCAN_SCANNING = "🔄 Scanning..."
+SCAN_SCANNING = "🔄 Scanning page {page}...\n\nKeep the lid closed until it finishes."
+SCAN_PAGE_DONE = "✅ Page {page} scanned.\n\n📄 {total} page(s) in the document so far."
+SCAN_PAGE_REPLACED = "🔄 Page {page} rescanned.\n\n📄 {total} page(s) in the document so far."
+SCAN_NEXT_PAGE = "Put the next page on the glass, then press “➕ Scan more”."
+SCAN_DOCUMENT_READY = "📄 Your document: {pages} page(s)."
+SCAN_ASSEMBLING = "📎 Assembling the document..."
+SCAN_SESSION_CANCELLED = "✖️ Scan cancelled. Scanned pages were discarded."
 SCAN_CANCELLED = "✖️ Scan request cancelled."
 SCAN_NOTHING_TO_CANCEL = "There is no pending scan request."
 SCAN_FAILED = "❌ Scan failed.\n\nReason: {reason}"

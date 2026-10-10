@@ -14,12 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.bot import texts
 from app.bot.handlers import auth, common, printing, scanning
+from app.bot.keyboards import BTN_SCAN, BTN_SCAN_NOW, configure_menu
 from app.bot.middleware import UserContextMiddleware
 from app.bot.notifier import TelegramNotifier
 from app.config import ScanMode, Settings, load_settings
 from app.database.database import create_engine, create_session_factory, ping
 from app.logging_setup import event, setup_logging
-from app.printer.base import PrinterError, PullScanSource, PushScanSource
+from app.printer.base import PrinterError, PushScanSource
 from app.printer.escl import EsclScanner
 from app.printer.hp import HPIppPrinter
 from app.printer.models import capabilities
@@ -27,6 +28,7 @@ from app.printer.smtp_receiver import SmtpScanReceiver
 from app.services.auth_service import AuthService
 from app.services.print_service import PrintService
 from app.services.scan_service import ScanService
+from app.services.scan_session import ScanSessionService
 
 log = logging.getLogger("app")
 
@@ -34,13 +36,19 @@ HEARTBEAT_INTERVAL = 30
 
 
 def build_dispatcher(
-    settings: Settings, auth_service: AuthService, print_service: PrintService, scan_service: ScanService
+    settings: Settings,
+    auth_service: AuthService,
+    print_service: PrintService,
+    scan_service: ScanService,
+    scan_sessions: ScanSessionService | None = None,
 ) -> Dispatcher:
     dp = Dispatcher()
     dp["settings"] = settings
     dp["auth_service"] = auth_service
     dp["print_service"] = print_service
     dp["scan_service"] = scan_service
+    dp["scan_sessions"] = scan_sessions
+    configure_menu(BTN_SCAN_NOW if settings.scan_mode is ScanMode.ESCL else BTN_SCAN)
 
     user_ctx = UserContextMiddleware(auth_service)
     dp.message.outer_middleware(user_ctx)
@@ -127,14 +135,20 @@ async def run() -> None:
     notifier = TelegramNotifier(bot)
     printer = HPIppPrinter(settings)
 
-    pull_source: PullScanSource | None = EsclScanner(settings) if settings.scan_mode is ScanMode.ESCL else None
     push_source: PushScanSource | None = SmtpScanReceiver(settings) if settings.scan_mode is ScanMode.EMAIL else None
 
     auth_service = AuthService(session_factory, settings)
     print_service = PrintService(session_factory, printer, settings)
-    scan_service = ScanService(session_factory, settings, notifier, pull_source=pull_source)
+    scan_service = ScanService(session_factory, settings, notifier)
+    scan_sessions = (
+        ScanSessionService(session_factory, settings, EsclScanner(settings), notifier.notify)
+        if settings.scan_mode is ScanMode.ESCL
+        else None
+    )
 
     print_service.cleanup_stale_workspaces()
+    if scan_sessions is not None:
+        scan_sessions.cleanup_stale_workdirs()
     await scan_service.recover_after_restart()
     if push_source is not None:
         await push_source.start(scan_service.handle_incoming_scan)
@@ -144,11 +158,14 @@ async def run() -> None:
         asyncio.create_task(heartbeat(engine, settings), name="heartbeat"),
         asyncio.create_task(check_printer(printer), name="printer-check"),
     ]
-    dp = build_dispatcher(settings, auth_service, print_service, scan_service)
+    if scan_sessions is not None:
+        tasks.append(asyncio.create_task(scan_sessions.run_expiry_loop(), name="scan-session-expiry"))
+    dp = build_dispatcher(settings, auth_service, print_service, scan_service, scan_sessions)
     try:
         await bot.set_my_commands(
             [
                 BotCommand(command="start", description="Show the menu"),
+                BotCommand(command="scan", description="Scan the page on the glass"),
                 BotCommand(command="help", description="How to print and scan"),
                 BotCommand(command="logout", description="Remove your access"),
             ]

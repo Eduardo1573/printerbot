@@ -4,7 +4,7 @@ Rules:
 * Each authenticated user may have at most one active (pending/processing) request.
 * Push mode (Scan to E-mail): an incoming scan goes to the OLDEST non-expired pending
   request (FIFO). If there is none, the scan is refused and never delivered to anyone.
-* Pull mode (eSCL): the user's own request is the scan job, so ownership is implicit.
+* Pull mode (eSCL) uses multi-page sessions instead: see app/services/scan_session.py.
 * Expired/cancelled requests can never receive a scan.
 """
 
@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.config import Settings
 from app.database.models import ScanRequest, ScanStatus, utcnow
 from app.logging_setup import event
-from app.printer.base import PrinterBusyError, PrinterError, PullScanSource, ScanResult
+from app.printer.base import ScanResult
 
 log = logging.getLogger(__name__)
 
@@ -41,24 +41,16 @@ class CreateRequestResult:
     created: bool  # False if the user already had an active request
 
 
-class ScanRequestError(Exception):
-    def __init__(self, user_message: str) -> None:
-        super().__init__(user_message)
-        self.user_message = user_message
-
-
 class ScanService:
     def __init__(
         self,
         session_factory: async_sessionmaker[AsyncSession],
         settings: Settings,
         notifier: ScanNotifier,
-        pull_source: PullScanSource | None = None,
     ) -> None:
         self._sf = session_factory
         self._s = settings
         self._notifier = notifier
-        self._pull = pull_source
         self._claim_lock = asyncio.Lock()
         self._tasks: set[asyncio.Task] = set()
 
@@ -236,43 +228,6 @@ class ScanService:
             return
         await self._finish(request_id, ScanStatus.COMPLETED)
         event(log, "scan_delivered", request_id=request_id, telegram_id=telegram_id, files=len(result.files))
-
-    # ------------------------------------------------------------------ pull mode
-
-    async def run_pull_scan(self, telegram_id: int) -> None:
-        """eSCL: scan now on behalf of `telegram_id`'s pending request and deliver it."""
-        if self._pull is None:
-            raise ScanRequestError("Scanning on demand is not enabled.")
-        async with self._sf() as session, session.begin():
-            request = await session.scalar(
-                select(ScanRequest)
-                .where(
-                    ScanRequest.telegram_user_id == telegram_id,
-                    ScanRequest.status == ScanStatus.PENDING,
-                    ScanRequest.expires_at > utcnow(),
-                )
-                .with_for_update()
-            )
-            if request is None:
-                raise ScanRequestError("You have no active scan request. Press “📥 Receive Scan” first.")
-            request.status = ScanStatus.PROCESSING
-            request_id = request.id
-        event(log, "scan_started", request_id=request_id, telegram_id=telegram_id, source="escl")
-        try:
-            result = await self._pull.get_scan()
-        except PrinterBusyError:
-            # Nothing was scanned; keep the request so the user can retry.
-            async with self._sf() as session, session.begin():
-                await session.execute(
-                    update(ScanRequest).where(ScanRequest.id == request_id).values(status=ScanStatus.PENDING)
-                )
-            raise
-        except PrinterError as exc:
-            await self._finish(request_id, ScanStatus.FAILED, error=str(exc)[:1000])
-            event(log, "scan_failed", level=logging.WARNING, request_id=request_id, error=str(exc))
-            raise
-        event(log, "scan_received", source="escl", request_id=request_id, files=len(result.files), bytes=result.total_size)
-        await self._deliver(request_id, telegram_id, result)
 
     # ------------------------------------------------------------------ helpers
 
