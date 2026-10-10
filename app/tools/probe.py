@@ -47,8 +47,8 @@ async def probe_ipp(settings) -> bool:
     for name in PRINTER_ATTRIBUTES:
         line(name, attrs.get(name, "-"))
     formats = attrs.get("document-format-supported", [])
-    ok = "application/pdf" in formats or "image/pwg-raster" in formats
-    print(f"  => printing {'SUPPORTED' if ok else 'NOT SUPPORTED (no PDF / PWG raster)'}")
+    ok = any(f in formats for f in ("application/pdf", "image/pwg-raster", "image/urf"))
+    print(f"  => printing {'SUPPORTED' if ok else 'NOT SUPPORTED (no PDF / PWG raster / URF)'}")
     return ok
 
 

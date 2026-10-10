@@ -1,0 +1,548 @@
+{
+ "printer-uri-supported": [
+  "ipp://192.168.1.23/ipp/print",
+  "ipps://192.168.1.23/ipp/print"
+ ],
+ "uri-security-supported": [
+  "none",
+  "tls"
+ ],
+ "uri-authentication-supported": [
+  "requesting-user-name",
+  "requesting-user-name"
+ ],
+ "printer-name": [
+  "NPICE4B00"
+ ],
+ "printer-location": [
+  "unitedStates"
+ ],
+ "printer-more-info": [
+  "http://192.168.1.23/hp/device/info_config_AirPrint.html?tab=Networking&menu=AirPrintStatus"
+ ],
+ "printer-info": [
+  "HP LaserJet MFP M130fn"
+ ],
+ "printer-make-and-model": [
+  "HP LaserJet MFP M129-M134"
+ ],
+ "printer-state": [
+  3
+ ],
+ "printer-state-reasons": [
+  "toner-low-warning"
+ ],
+ "printer-state-message": [
+  ""
+ ],
+ "printer-state-change-time": [
+  726
+ ],
+ "printer-state-change-date-time": [
+  "b'\\x07\\xd8\\x02\\x02\\x08\\t\\r\\x00+\\x00\\x00'"
+ ],
+ "ipp-versions-supported": [
+  "1.0",
+  "1.1",
+  "2.0"
+ ],
+ "mopria-certified": [
+  "1.3"
+ ],
+ "ipp-features-supported": [
+  "airprint-1.5"
+ ],
+ "operations-supported": [
+  2,
+  3,
+  4,
+  5,
+  6,
+  7,
+  59,
+  8,
+  9,
+  10,
+  11,
+  60
+ ],
+ "multiple-document-jobs-supported": [
+  false
+ ],
+ "multiple-operation-time-out": [
+  120
+ ],
+ "multiple-operation-time-out-action": [
+  "abort-job"
+ ],
+ "charset-configured": [
+  "utf-8"
+ ],
+ "charset-supported": [
+  "utf-8"
+ ],
+ "natural-language-configured": [
+  "en"
+ ],
+ "generated-natural-language-supported": [
+  "en"
+ ],
+ "document-format-default": [
+  "application/PCLm"
+ ],
+ "document-format-supported": [
+  "image/urf",
+  "application/PCLm",
+  "application/octet-stream"
+ ],
+ "reference-uri-schemes-supported": [
+  "http",
+  "https"
+ ],
+ "printer-is-accepting-jobs": [
+  true
+ ],
+ "queued-job-count": [
+  0
+ ],
+ "pdl-override-supported": [
+  "attempted"
+ ],
+ "printer-up-time": [
+  1000
+ ],
+ "printer-current-time": [
+  "b'\\x07\\xd8\\x02\\x02\\x08\\x0e3\\x00+\\x00\\x00'"
+ ],
+ "compression-supported": [
+  "none"
+ ],
+ "color-supported": [
+  false
+ ],
+ "job-creation-attributes-supported": [
+  "copies",
+  "finishings",
+  "sides",
+  "orientation-requested",
+  "media",
+  "print-quality",
+  "printer-resolution",
+  "output-bin",
+  "media-col",
+  "output-mode",
+  "ipp-attribute-fidelity",
+  "job-name",
+  "multiple-document-handling",
+  "print-scaling",
+  "print-color-mode",
+  "print-content-optimize",
+  "manual-duplex-sheet-count",
+  "margins-pre-applied",
+  "pclm-source-resolution",
+  "job-mandatory-attributes"
+ ],
+ "media-supported": [
+  "na_letter_8.5x11in",
+  "na_legal_8.5x14in",
+  "na_executive_7.25x10.5in",
+  "na_foolscap_8.5x13in",
+  "na_oficio_8.5x13.4in",
+  "na_index-4x6_4x6in",
+  "na_index-5x8_5x8in",
+  "iso_a4_210x297mm",
+  "iso_a5_148x210mm",
+  "iso_a6_105x148mm",
+  "jis_b5_182x257mm",
+  "jis_b6_128x182mm",
+  "om_small-photo_100x150mm",
+  "prc_16k-195x270_195x270mm",
+  "prc_16k-184x260_184x260mm",
+  "roc_16k_7.75x10.75in",
+  "jpn_hagaki_100x148mm",
+  "jpn_oufuku_148x200mm",
+  "na_number-10_4.125x9.5in",
+  "na_monarch_3.875x7.5in",
+  "iso_b5_176x250mm",
+  "iso_c5_162x229mm",
+  "iso_dl_110x220mm",
+  "custom_min_3x5in",
+  "custom_max_8.5x14in"
+ ],
+ "media-size-supported": [
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}",
+  "{}"
+ ],
+ "media-default": [
+  "iso_a4_210x297mm"
+ ],
+ "media-col-supported": [
+  "media-size",
+  "media-top-margin",
+  "media-left-margin",
+  "media-right-margin",
+  "media-bottom-margin",
+  "media-type",
+  "media-source",
+  "media-source-properties",
+  "duplex-supported"
+ ],
+ "media-col-default": [
+  "{}"
+ ],
+ "media-left-margin-supported": [
+  423
+ ],
+ "media-right-margin-supported": [
+  423
+ ],
+ "media-top-margin-supported": [
+  423
+ ],
+ "media-bottom-margin-supported": [
+  423
+ ],
+ "media-source-supported": [
+  "auto",
+  "manual",
+  "tray-1"
+ ],
+ "printer-input-tray": [
+  "b'type=other;mediafeed=-2;mediaxfeed=-2;maxcapacity=-2;level=-2;status=0;name=auto'",
+  "b'type=sheetFeedManual;mediafeed=-2;mediaxfeed=-2;maxcapacity=150;level=-3;status=0;name=manual'",
+  "b'type=sheetFeedAutoNonRemovableTray;mediafeed=-2;mediaxfeed=-2;maxcapacity=150;level=-3;status=0;name=tray-1'"
+ ],
+ "media-type-supported": [
+  "stationery",
+  "stationery-lightweight",
+  "com.hp.stationery-extralightweight",
+  "com.hp.stationery-intermediateweight",
+  "com.hp.stationery-midweight",
+  "stationery-heavyweight",
+  "com.hp.stationery-extraheavyweight",
+  "labels",
+  "stationery-letterhead",
+  "envelope",
+  "stationery-preprinted",
+  "stationery-prepunched",
+  "stationery-colored",
+  "stationery-bond",
+  "com.hp.recycled",
+  "com.hp.rough",
+  "stationery-fine"
+ ],
+ "pages-per-minute": [
+  21
+ ],
+ "pdf-versions-supported": [
+  "none"
+ ],
+ "urf-supported": [
+  "V1.4",
+  "CP99",
+  "W8",
+  "OB10",
+  "PQ3-4-5",
+  "IS1",
+  "MT1-3-5",
+  "RS600"
+ ],
+ "printer-uuid": [
+  "urn:uuid:564e4837-4330-3137-3934-c8d9d2ce4b00"
+ ],
+ "marker-names": [
+  "Black Cartridge HP CF217A",
+  "Imaging Drum HP CF219A"
+ ],
+ "marker-colors": [
+  "#000000",
+  "none"
+ ],
+ "marker-types": [
+  "toner",
+  "opc"
+ ],
+ "marker-low-levels": [
+  3,
+  1
+ ],
+ "marker-high-levels": [
+  100,
+  100
+ ],
+ "marker-levels": [
+  0,
+  70
+ ],
+ "copies-default": [
+  1
+ ],
+ "multiple-document-handling-default": [
+  "single-document"
+ ],
+ "finishings-default": [
+  3
+ ],
+ "orientation-requested-default": [
+  3
+ ],
+ "print-quality-default": [
+  4
+ ],
+ "printer-resolution-default": [
+  [
+   600,
+   600,
+   3
+  ]
+ ],
+ "sides-default": [
+  "one-sided"
+ ],
+ "output-bin-default": [
+  "face-down"
+ ],
+ "output-mode-default": [
+  "auto"
+ ],
+ "copies-supported": [
+  [
+   1,
+   99
+  ]
+ ],
+ "multiple-document-handling-supported": [
+  "single-document",
+  "separate-documents-uncollated-copies",
+  "separate-documents-collated-copies",
+  "single-document-new-sheet"
+ ],
+ "finishings-supported": [
+  3
+ ],
+ "orientation-requested-supported": [
+  3,
+  4,
+  5,
+  6,
+  7
+ ],
+ "print-quality-supported": [
+  4,
+  3,
+  5
+ ],
+ "printer-resolution-supported": [
+  [
+   600,
+   600,
+   3
+  ]
+ ],
+ "sides-supported": [
+  "one-sided"
+ ],
+ "job-impressions-supported": [
+  [
+   1,
+   99999
+  ]
+ ],
+ "job-media-sheets-supported": [
+  [
+   1,
+   99999
+  ]
+ ],
+ "output-bin-supported": [
+  "face-down"
+ ],
+ "printer-output-tray": [
+  "b'type=unRemovableBin;maxcapacity=125;remaining=-3;status=0;name=face-down;stackingorder=firstToLast;pagedelivery=faceDown'"
+ ],
+ "output-mode-supported": [
+  "auto",
+  "auto-monochrome",
+  "monochrome"
+ ],
+ "printer-icons": [
+  "http://192.168.1.23/ipp/images/printer.png",
+  "http://192.168.1.23/ipp/images/printer-large.png"
+ ],
+ "printer-supply-info-uri": [
+  "http://192.168.1.23/hp/device/mSupplyStatus.html"
+ ],
+ "printer-device-id": [
+  "MFG:HP;CMD:PJL,PML,URP;MDL:HP LaserJet MFP M129-M134;CLS:PRINTER;DES:HP LaserJet MFP M130fn;MEM:MEM=233MB;PRN:G3Q59A;COMMENT:RES=600x1;LEDMDIS:USB#ff#04#01;CID:HPLJPCLMSMV1;IPP-E:FF-04-01,FF-04-01,FF-09-01,FF-09-01;eSCL:FF-04-01,FF-04-01,FF-09-01,FF-09-01;MCT:MF;MCL:FL;MCV:1.0;"
+ ],
+ "printer-dns-sd-name": [
+  "HP LaserJet MFP M130fn (CE4B00)"
+ ],
+ "printer-geo-location": [
+  "b''"
+ ],
+ "printer-kind": [
+  "document",
+  "envelope",
+  "photo"
+ ],
+ "landscape-orientation-requested-preferred": [
+  5
+ ],
+ "identify-actions-default": [
+  "display"
+ ],
+ "identify-actions-supported": [
+  "display"
+ ],
+ "print-scaling-default": [
+  "auto"
+ ],
+ "print-scaling-supported": [
+  "auto",
+  "auto-fit",
+  "fill",
+  "fit",
+  "none"
+ ],
+ "printer-firmware-name": [
+  "20170710"
+ ],
+ "printer-firmware-string-version": [
+  "20170710"
+ ],
+ "printer-firmware-version": [
+  "b'20170710'"
+ ],
+ "which-jobs-supported": [
+  "completed",
+  "not-completed"
+ ],
+ "printer-organization": [
+  ""
+ ],
+ "printer-organizational-unit": [
+  ""
+ ],
+ "printer-get-attributes-supported": [
+  "document-format"
+ ],
+ "printer-alert": [
+  "b'code=markerTonerAlmostEmpty'"
+ ],
+ "printer-alert-description": [
+  ""
+ ],
+ "printer-config-change-time": [
+  492
+ ],
+ "printer-config-change-date-time": [
+  "b'\\x07\\xd8\\x02\\x02\\x08\\x05\\x13\\x00+\\x00\\x00'"
+ ],
+ "printer-strings-languages-supported": [
+  "en",
+  "fr",
+  "de",
+  "it",
+  "es",
+  "sv",
+  "da",
+  "no",
+  "nl",
+  "fi",
+  "pt",
+  "tr",
+  "pl",
+  "ru",
+  "cs",
+  "hu",
+  "ca",
+  "ro",
+  "hr",
+  "sl",
+  "sk",
+  "el",
+  "id",
+  "zh-cn",
+  "ar",
+  "zh-tw",
+  "ko",
+  "th",
+  "he"
+ ],
+ "printer-strings-uri": [
+  "http://192.168.1.23/ipp/strings/en"
+ ],
+ "epcl-version-supported": [
+  "epcl1.0"
+ ],
+ "image-enhancement-supported": [
+  "object-tagging"
+ ],
+ "manual-duplex-supported": [
+  false,
+  true
+ ],
+ "pclm-raster-back-side": [
+  "normal"
+ ],
+ "pclm-compression-method-preferred": [
+  "flate"
+ ],
+ "pclm-source-resolution-supported": [
+  [
+   600,
+   600,
+   3
+  ]
+ ],
+ "pclm-strip-height-preferred": [
+  64
+ ],
+ "pclm-strip-height-supported": [
+  16,
+  32,
+  64,
+  128
+ ],
+ "print-color-mode-default": [
+  "auto"
+ ],
+ "print-color-mode-supported": [
+  "auto",
+  "auto-monochrome",
+  "monochrome"
+ ],
+ "print-content-optimize-default": [
+  "auto"
+ ],
+ "print-content-optimize-supported": [
+  "auto",
+  "photo",
+  "graphics",
+  "text",
+  "text-and-graphics"
+ ]
+}

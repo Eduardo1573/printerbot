@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 
 import aiohttp
+from pypdf import PdfReader
 
 from app.config import Settings
 from app.logging_setup import event
@@ -33,7 +34,13 @@ from app.printer.ipp import (
     JobState,
     Tag,
 )
-from app.printer.raster import PAPER_SIZES, choose_raster_settings, pdf_to_pwg_raster
+from app.printer.raster import (
+    PAPER_SIZES,
+    choose_raster_settings,
+    choose_urf_settings,
+    pdf_to_urf,
+    pdf_to_pwg_raster,
+)
 
 log = logging.getLogger(__name__)
 
@@ -44,6 +51,7 @@ PRINTER_ATTRIBUTES = [
     "document-format-supported",
     "pwg-raster-document-resolution-supported",
     "pwg-raster-document-type-supported",
+    "urf-supported",
     "sides-supported",
     "media-supported",
     "printer-make-and-model",
@@ -65,6 +73,10 @@ REASON_TEXT = {
 
 POLL_INTERVAL = 2.0
 JOB_SUBMIT_TIMEOUT = 300  # upper bound for uploading the raster data itself
+
+
+def _count_pages(path: Path) -> int:
+    return len(PdfReader(str(path), strict=False).pages)
 
 
 def describe_reasons(reasons: list[str]) -> str:
@@ -157,16 +169,35 @@ class HPIppPrinter(PrintBackend):
             event(
                 log,
                 "pdf_rasterized",
+                format="pwg",
                 dpi=raster.resolution,
                 pwg_type=raster.pwg_type,
                 raster_bytes=document.stat().st_size,
                 seconds=round(time.monotonic() - started, 2),
             )
             document_format = "image/pwg-raster"
+        elif "image/urf" in formats:
+            urf = choose_urf_settings(printer.get("urf-supported"), self._settings.printer_paper_size)
+            pages = await asyncio.to_thread(_count_pages, file_path)
+            document = file_path.with_suffix(".urf")
+            started = time.monotonic()
+            await pdf_to_urf(file_path, document, urf, pages, timeout=remaining())
+            event(
+                log,
+                "pdf_rasterized",
+                format="urf",
+                dpi=urf.resolution,
+                color=urf.color,
+                pages=pages,
+                raster_bytes=document.stat().st_size,
+                seconds=round(time.monotonic() - started, 2),
+            )
+            document_format = "image/urf"
         else:
+            # application/PCLm is deliberately not used: it reboots M130 firmware 20170710.
             raise PrinterError(
                 f"unsupported document formats: {formats}",
-                user_message="The printer does not advertise a supported document format (PDF or PWG raster).",
+                user_message="The printer does not advertise a supported document format (PDF, PWG raster or URF).",
             )
 
         # Exactly one copy — never configurable.

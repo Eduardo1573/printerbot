@@ -18,7 +18,7 @@ Yes, **if your home router can run a WireGuard (VPN) client**. Full research wit
 |---|---|
 | Can the printer connect out to a server or VPN? | **No.** It has no VPN client. HP ePrint (cloud e-mail printing) was shut down in 2023. |
 | How can the VPS print to it? | Through **IPP/AirPrint (TCP 631)**, carried by a **WireGuard tunnel run by the home router**. Nothing is exposed to the Internet. |
-| Can it print PDF directly? | **No.** It only understands PCLmS / URF / **PWG Raster**. The bot converts PDF → PWG raster with Ghostscript (driverless printing). |
+| Can it print PDF directly? | **No.** A real M130fn only accepts URF (AirPrint raster) and PCLm. The bot converts PDF → **URF** with Ghostscript (driverless printing). PCLm is never used: it crashes this firmware. |
 | How do scans reach the VPS? | **M130fw / M132fw:** the printer's **Scan to E-mail** sends to the bot's built-in SMTP receiver through the tunnel. **Other network models:** the panel can't send scans anywhere. The bot can try to *pull* scans over **eSCL**, which HP doesn't document for this series, so it **must be verified** on your unit with the probe tool. **"a" models:** USB-only, so this can't work. |
 
 ### What you need to know about your hardware
@@ -67,7 +67,7 @@ Yes, **if your home router can run a WireGuard (VPN) client**. Full research wit
    └───────────────────────────────────────────────┘
 ```
 
-* **Print:** Telegram PDF → validated → Ghostscript → PWG raster → IPP `Print-Job` with `copies=1` → job is
+* **Print:** Telegram PDF → validated → Ghostscript → URF raster → IPP `Print-Job` with `copies=1` → job is
   polled until it completes → the user gets the result.
 * **Scan (email mode):** the user presses 📥 Receive Scan → a `pending` request is created. Someone presses
   Scan → E-mail on the printer → the printer sends the scan to the bot's SMTP receiver → the **oldest
@@ -433,7 +433,7 @@ app/
     base.py             PrintBackend / PushScanSource / PullScanSource interfaces
     hp.py               HP M129–M134 IPP print backend
     ipp.py              minimal IPP/2.0 client
-    raster.py           PDF → PWG raster (Ghostscript)
+    raster.py           PDF → URF / PWG raster (Ghostscript)
     smtp_receiver.py    Scan-to-E-mail receiver
     escl.py             eSCL pull scanner
     models.py           per-model capabilities (from HP's guide)

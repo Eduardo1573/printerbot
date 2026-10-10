@@ -11,7 +11,14 @@ from aiohttp.test_utils import TestServer
 from app.printer.base import PrinterBusyError, PrinterError, PrinterTimeoutError, PrinterUnavailableError
 from app.printer.hp import HPIppPrinter, describe_reasons
 from app.printer.ipp import Attr, IppError, Op, Tag, decode_message, decode_response, encode_request
-from app.printer.raster import RasterSettings, choose_raster_settings, ghostscript_args
+from app.printer.raster import (
+    RasterSettings,
+    UrfSettings,
+    choose_raster_settings,
+    choose_urf_settings,
+    ghostscript_args,
+    set_urf_page_count,
+)
 from tests.conftest import make_settings, pdf_bytes
 
 # ------------------------------------------------------------------ codec
@@ -68,6 +75,54 @@ def test_choose_raster_settings_rejects_unknown_types():
         choose_raster_settings([(600, 600, 3)], ["cmyk_16"], "a4")
 
 
+def test_choose_urf_settings_for_real_m130fn():
+    keywords = ["V1.4", "CP99", "W8", "OB10", "PQ3-4-5", "IS1", "MT1-3-5", "RS600"]
+    assert choose_urf_settings(keywords, "a4") == UrfSettings(resolution=600, color="W8", paper_size="a4")
+
+
+def test_choose_urf_settings_resolution_range():
+    assert choose_urf_settings(["W8", "RS300-600-1200"], "a4").resolution == 600
+    assert choose_urf_settings(["SRGB24", "RS300"], "a4") == UrfSettings(300, "SRGB24", "a4")
+
+
+def test_choose_urf_settings_rejects_unknown_color():
+    with pytest.raises(PrinterError):
+        choose_urf_settings(["CMYK32", "RS600"], "a4")
+
+
+def test_set_urf_page_count(tmp_path):
+    path = tmp_path / "x.urf"
+    path.write_bytes(b"UNIRAST\0" + b"\0" * 4 + b"data")
+    set_urf_page_count(path, 3)
+    assert path.read_bytes() == b"UNIRAST\0\0\0\0\x03data"
+
+
+async def test_pclm_is_never_used(fake_ipp, tmp_path, pdf_file, monkeypatch):
+    """Ghostscript PCLm reboots M130 firmware 20170710; URF must be chosen instead."""
+    fake, port = await fake_ipp(formats=("application/PCLm", "image/urf"))
+    monkeypatch.setattr("app.printer.hp.POLL_INTERVAL", 0.01)
+    calls = []
+
+    async def fake_urf(src, dst, settings, pages, timeout):
+        calls.append((settings, pages))
+        dst.write_bytes(b"UNIRAST\0fake")
+
+    monkeypatch.setattr("app.printer.hp.pdf_to_urf", fake_urf)
+    printer = HPIppPrinter(make_settings(tmp_path, printer_host="127.0.0.1", printer_port=port))
+    await printer.print_pdf(pdf_file, job_name="t")
+    msg, _ = fake.print_requests[0]
+    assert msg.group(Tag.OPERATION)["document-format"] == ["image/urf"]
+    assert calls == [(UrfSettings(600, "W8", "a4"), 2)]
+
+
+async def test_printer_with_only_pclm_is_refused(fake_ipp, tmp_path, pdf_file):
+    fake, port = await fake_ipp(formats=("application/PCLm",))
+    printer = HPIppPrinter(make_settings(tmp_path, printer_host="127.0.0.1", printer_port=port))
+    with pytest.raises(PrinterError):
+        await printer.print_pdf(pdf_file, job_name="t")
+    assert fake.print_requests == []
+
+
 def test_ghostscript_args_are_safe_list(tmp_path):
     args = ghostscript_args(tmp_path / "a b;rm -rf.pdf", tmp_path / "out.pwg", RasterSettings())
     assert args[0] == "gs" and "-dSAFER" in args
@@ -118,6 +173,9 @@ class FakeIppPrinter:
                 (Tag.KEYWORD, "sides-supported", "one-sided"),
                 (Tag.KEYWORD, "media-supported", "iso_a4_210x297mm"),
             ] + [(Tag.MIME, "document-format-supported", f) for f in self.formats]
+            if "image/urf" in self.formats:
+                # Exactly what a real M130fn reports.
+                attrs += [(Tag.KEYWORD, "urf-supported", k) for k in ("V1.4", "CP99", "W8", "OB10", "PQ3-4-5", "IS1", "MT1-3-5", "RS600")]
             return self._response(msg.request_id, 0, [common, (Tag.PRINTER, attrs)])
         if op == Op.PRINT_JOB:
             self.print_requests.append((msg, body[offset:]))
@@ -281,12 +339,17 @@ async def test_real_ghostscript_rejects_garbage(tmp_path):
 @pytest.mark.skipif(__import__("shutil").which("gs") is None, reason="ghostscript not installed")
 async def test_end_to_end_pdf_to_raster_printer(fake_ipp, tmp_path, pdf_file, monkeypatch):
     """PDF -> real Ghostscript -> IPP Print-Job, against a raster-only printer like the M130."""
-    fake, port = await fake_ipp(formats=("image/urf", "image/pwg-raster", "application/PCLm"))
+    fake, port = await fake_ipp(formats=("image/urf", "application/PCLm", "application/octet-stream"))
     monkeypatch.setattr("app.printer.hp.POLL_INTERVAL", 0.01)
     printer = HPIppPrinter(make_settings(tmp_path, printer_host="127.0.0.1", printer_port=port))
     result = await printer.print_pdf(pdf_file, job_name="e2e")
     assert result.copies == 1
     msg, document = fake.print_requests[0]
-    assert msg.group(Tag.OPERATION)["document-format"] == ["image/pwg-raster"]
+    assert msg.group(Tag.OPERATION)["document-format"] == ["image/urf"]  # never PCLm
     assert msg.group(Tag.JOB)["copies"] == [1]
-    assert document[:4] == b"RaS2"
+    assert document[:8] == b"UNIRAST\0"
+    assert struct.unpack(">I", document[8:12])[0] == 2  # page count patched in
+    bpp, color_space = document[12], document[13]
+    width, height, dpi = struct.unpack(">III", document[24:36])
+    assert (bpp, color_space, dpi) == (8, 0, 600)  # W8 sGray, RS600
+    assert (width, height) == (4958, 7017)  # A4 at 600 dpi

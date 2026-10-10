@@ -13,7 +13,7 @@ Primary source: HP user guide **c05208327**, *"LaserJet Pro MFP M129-M132, Laser
 |---|---|---|
 | Models | LED: M130a, M132a, M133a, M134a · 2-line LCD: M130nw, M132nw, M132snw, M130fn, M132fn, M132fp, M133fn, M134fn · Touchscreen: M130fw, M132fw | User guide, "Printer views" |
 | Networking | "a" models are USB-only. All other models have Ethernet and/or Wi-Fi | User guide / datasheet |
-| Print languages | **PCLmS, URF, PWG Raster**. No PDF, PostScript or PCL6 | HP M130fw datasheet |
+| Print languages | Datasheet: PCLmS, URF, PWG Raster. **A real M130fn (fw 20170710) advertises only `image/urf` and `application/PCLm` over IPP.** Ghostscript's PCLm output **reboots** that firmware; 8-bit grayscale URF at 600 dpi **prints correctly** (tested). No PDF, PostScript or PCL6 | HP M130fw datasheet; `docs/printer-dumps/` |
 | Driverless printing | AirPrint, Mopria (IPP on TCP 631) | User guide "Mobile printing", datasheet |
 | Scan to E-mail | **Touchscreen models only** (M130fw, M132fw). SMTP server, port, optional SSL/TLS ("Always use secure connection") and SMTP AUTH are set in EWS → Scan → Outgoing E-mail Profiles | User guide ch. 6 |
 | Scan to Network Folder | Touchscreen models only (SMB share) | User guide ch. 6 |
@@ -33,16 +33,18 @@ Primary source: HP user guide **c05208327**, *"LaserJet Pro MFP M129-M132, Laser
      clear text) on the Internet, so it is **not recommended**. It's documented in the README only
      as a last resort.
    * HP cloud (ePrint): discontinued. **Not possible.**
-2. **PDFs must be rasterised on the VPS.** The printer only accepts PCLmS/URF/PWG raster.
-   Ghostscript's `pwgraster` device renders the PDF, and the bot sends it with an IPP `Print-Job`
-   with `copies=1`. This is what an AirPrint/IPP Everywhere client does. The bot reads
+2. **PDFs must be rasterised on the VPS.** Ghostscript renders the PDF to **Apple URF** (AirPrint
+   raster, 8-bit gray, 600 dpi) and the bot sends it with an IPP `Print-Job` with `copies=1`.
+   PWG raster is used if a printer advertises it. PCLm is never used, because it crashes this
+   firmware. This is what an AirPrint/IPP Everywhere client does. The bot reads
    `document-format-supported` at runtime and sends PDF directly if a printer ever supports it.
 3. **Scanning depends on the model:**
    * **M130fw / M132fw**: the printer *pushes* scans with Scan to E-mail. Its SMTP server is set to
      the bot's built-in SMTP receiver on the VPS, reached through the tunnel. This is the only
      officially documented way for this series to send a scan anywhere without a computer. It also
      matches the "next scan belongs to the user who pressed 📥 Receive Scan" flow.
-   * **nw / snw / fn / fp models**: the panel can't send scans anywhere. The only computer-free
+   * **nw / snw / fn / fp models**: the panel can't send scans anywhere. *Tested on an M130fn:
+     eSCL works (flatbed and feeder advertised; a real flatbed scan was delivered as PDF).* The only computer-free
      option is for the VPS to *pull* a scan over eSCL through the tunnel. HP doesn't document eSCL
      here, so treat it as **unverified until `python -m app.tools.probe --scan` succeeds** on the
      actual device. If it fails, scanning isn't possible on that model without a computer. Set
