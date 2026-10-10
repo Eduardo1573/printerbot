@@ -49,11 +49,25 @@ class PrintResult:
 
 
 @dataclass(slots=True)
+class Supply:
+    name: str  # e.g. "Black Cartridge HP CF217A"
+    kind: str  # IPP marker-type: "toner", "opc" (imaging drum), ...
+    level: int | None  # percent 0-100; None = printer doesn't know
+    low_level: int | None = None
+
+    @property
+    def is_low(self) -> bool:
+        return self.level is not None and self.low_level is not None and self.level <= self.low_level
+
+
+@dataclass(slots=True)
 class PrinterStatus:
     online: bool
     state: str | None = None
     reasons: list[str] = field(default_factory=list)
     document_formats: list[str] = field(default_factory=list)
+    supplies: list[Supply] = field(default_factory=list)
+    model: str | None = None
 
 
 @dataclass(slots=True)
@@ -104,3 +118,35 @@ class PullScanSource(ABC):
 
     @abstractmethod
     async def get_scan(self) -> ScanResult: ...
+
+
+# IPP printer-state-reasons keywords -> plain words (shared by all IPP printers).
+REASON_TEXT = {
+    "media-empty": "out of paper",
+    "media-needed": "out of paper",
+    "media-jam": "paper jam",
+    "toner-empty": "toner is empty",
+    "toner-low": "toner is low",
+    "marker-supply-low": "toner is low",
+    "marker-supply-empty": "toner is empty",
+    "door-open": "a door is open",
+    "cover-open": "a cover is open",
+    "input-tray-missing": "paper tray is missing",
+    "offline": "printer is offline",
+    "paused": "printer is paused",
+    "shutdown": "printer is shutting down",
+}
+
+
+def describe_reasons(reasons: list[str]) -> str:
+    texts: list[str] = []
+    for reason in reasons:
+        base = reason
+        for suffix in ("-error", "-warning", "-report"):
+            base = base.removesuffix(suffix)
+        if base == "none":
+            continue
+        text = REASON_TEXT.get(base, base.replace("-", " "))
+        if text not in texts:
+            texts.append(text)
+    return ", ".join(texts)

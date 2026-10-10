@@ -13,7 +13,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from app.bot import texts
-from app.bot.handlers import auth, common, printing, scanning
+from app.bot.handlers import auth, common, printing, scanning, status
 from app.bot.keyboards import BTN_SCAN, BTN_SCAN_NOW, configure_menu
 from app.bot.middleware import UserContextMiddleware
 from app.bot.notifier import TelegramNotifier
@@ -55,7 +55,9 @@ def build_dispatcher(
     dp.callback_query.outer_middleware(user_ctx)
 
     # Order matters: commands, then access-code entry, then protected features, then fallback.
-    dp.include_routers(common.router, auth.router, printing.router, scanning.router, common.fallback_router)
+    dp.include_routers(
+        common.router, auth.router, printing.router, scanning.router, status.router, common.fallback_router
+    )
 
     @dp.errors()
     async def on_error(error: ErrorEvent) -> bool:
@@ -166,6 +168,7 @@ async def run() -> None:
             [
                 BotCommand(command="start", description="Show the menu"),
                 BotCommand(command="scan", description="Scan the page on the glass"),
+                BotCommand(command="status", description="Printer status and toner level"),
                 BotCommand(command="help", description="How to print and scan"),
                 BotCommand(command="logout", description="Remove your access"),
             ]

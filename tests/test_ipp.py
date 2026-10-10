@@ -131,7 +131,7 @@ def test_ghostscript_args_are_safe_list(tmp_path):
 
 
 def test_describe_reasons():
-    assert describe_reasons(["media-empty-error", "toner-low-warning", "none"]) == "out of paper, toner low"
+    assert describe_reasons(["media-empty-error", "toner-low-warning", "none"]) == "out of paper, toner is low"
 
 
 # ------------------------------------------------------------------ fake printer

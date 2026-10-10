@@ -13,6 +13,7 @@ HELP = (
     "🖨 <b>Print</b> — send a PDF file (as a document). It is printed once, exactly one copy.\n"
     "Limits: {max_mb} MB, {max_pages} pages.\n\n"
     "📥 <b>Receive Scan</b> — {scan_help}\n\n"
+    "/status — printer status and toner level\n"
     "/start — show the menu\n"
     "/help — this help\n"
     "/logout — remove your access"

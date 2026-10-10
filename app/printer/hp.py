@@ -21,6 +21,8 @@ from app.printer.base import (
     PrinterTimeoutError,
     PrinterUnavailableError,
     PrintResult,
+    Supply,
+    describe_reasons,
 )
 from app.printer.ipp import (
     PRINTER_STATES,
@@ -55,21 +57,12 @@ PRINTER_ATTRIBUTES = [
     "sides-supported",
     "media-supported",
     "printer-make-and-model",
+    "marker-names",
+    "marker-types",
+    "marker-levels",
+    "marker-low-levels",
+    "marker-high-levels",
 ]
-
-REASON_TEXT = {
-    "media-empty": "out of paper",
-    "media-needed": "out of paper",
-    "media-jam": "paper jam",
-    "toner-empty": "toner is empty",
-    "marker-supply-empty": "toner is empty",
-    "door-open": "a door is open",
-    "cover-open": "a cover is open",
-    "input-tray-missing": "paper tray is missing",
-    "offline": "printer is offline",
-    "paused": "printer is paused",
-    "shutdown": "printer is shutting down",
-}
 
 POLL_INTERVAL = 2.0
 JOB_SUBMIT_TIMEOUT = 300  # upper bound for uploading the raster data itself
@@ -79,18 +72,26 @@ def _count_pages(path: Path) -> int:
     return len(PdfReader(str(path), strict=False).pages)
 
 
-def describe_reasons(reasons: list[str]) -> str:
-    texts: list[str] = []
-    for reason in reasons:
-        base = reason
-        for suffix in ("-error", "-warning", "-report"):
-            base = base.removesuffix(suffix)
-        if base == "none":
-            continue
-        text = REASON_TEXT.get(base, base.replace("-", " "))
-        if text not in texts:
-            texts.append(text)
-    return ", ".join(texts)
+def parse_supplies(printer: dict[str, list]) -> list[Supply]:
+    """marker-* attributes are parallel lists, one entry per supply (RFC 3805 / PWG 5100.9).
+
+    Levels are percentages of marker-high-levels; negative values mean unknown
+    (-1 unavailable, -2 unknown, -3 "some remaining").
+    """
+    names = printer.get("marker-names", [])
+    kinds = printer.get("marker-types", [])
+    levels = printer.get("marker-levels", [])
+    lows = printer.get("marker-low-levels", [])
+    highs = printer.get("marker-high-levels", [])
+    supplies: list[Supply] = []
+    for i, name in enumerate(names):
+        level = levels[i] if i < len(levels) and isinstance(levels[i], int) else None
+        high = highs[i] if i < len(highs) and isinstance(highs[i], int) and highs[i] > 0 else 100
+        if level is not None:
+            level = None if level < 0 else min(100, round(level * 100 / high))
+        low = lows[i] if i < len(lows) and isinstance(lows[i], int) and lows[i] >= 0 else None
+        supplies.append(Supply(str(name), str(kinds[i]) if i < len(kinds) else "", level, low))
+    return supplies
 
 
 def _blocking_reasons(reasons: list[str]) -> list[str]:
@@ -124,12 +125,15 @@ class HPIppPrinter(PrintBackend):
 
     async def get_status(self) -> PrinterStatus:
         resp = await self._attributes()
+        printer = resp.group(Tag.PRINTER)
         state = PRINTER_STATES.get(resp.first(Tag.PRINTER, "printer-state"), "unknown")
         return PrinterStatus(
             online=True,
             state=state,
-            reasons=[r for r in resp.group(Tag.PRINTER).get("printer-state-reasons", []) if r != "none"],
-            document_formats=list(resp.group(Tag.PRINTER).get("document-format-supported", [])),
+            reasons=[r for r in printer.get("printer-state-reasons", []) if r != "none"],
+            document_formats=list(printer.get("document-format-supported", [])),
+            supplies=parse_supplies(printer),
+            model=resp.first(Tag.PRINTER, "printer-make-and-model"),
         )
 
     async def print_pdf(self, file_path: Path, *, job_name: str) -> PrintResult:

@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from app.config import Settings
 from app.database.models import PrintJob, PrintStatus, utcnow
 from app.logging_setup import event
-from app.printer.base import PrintBackend, PrinterError, PrintResult
+from app.printer.base import PrintBackend, PrinterError, PrinterStatus, PrintResult
 
 log = logging.getLogger(__name__)
 
@@ -40,6 +40,9 @@ class PrintService:
         self._backend = backend
         self._s = settings
         self._slots = asyncio.Semaphore(settings.max_concurrent_print_jobs)
+
+    async def printer_status(self) -> PrinterStatus:
+        return await self._backend.get_status()
 
     @property
     def busy(self) -> bool:
