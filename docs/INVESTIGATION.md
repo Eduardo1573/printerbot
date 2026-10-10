@@ -13,7 +13,7 @@ Primary source: HP user guide **c05208327**, *"LaserJet Pro MFP M129-M132, Laser
 |---|---|---|
 | Models | LED: M130a, M132a, M133a, M134a · 2-line LCD: M130nw, M132nw, M132snw, M130fn, M132fn, M132fp, M133fn, M134fn · Touchscreen: M130fw, M132fw | User guide, "Printer views" |
 | Networking | "a" models are USB-only. All other models have Ethernet and/or Wi-Fi | User guide / datasheet |
-| Print languages | Datasheet: PCLmS, URF, PWG Raster. **A real M130fn (fw 20170710) advertises only `image/urf` and `application/PCLm` over IPP.** Ghostscript's PCLm output **reboots** that firmware; 8-bit grayscale URF at 600 dpi **prints correctly** (tested). No PDF, PostScript or PCL6 | HP M130fw datasheet; `docs/printer-dumps/` |
+| Print languages | Datasheet: PCLmS, URF, PWG Raster. **A real M130fn (fw 20170710) advertises only `image/urf` and `application/PCLm` over IPP.** Ghostscript's PCLm output **reboots** that firmware; 8-bit grayscale URF at 600 dpi **prints correctly** (tested). No PDF, PostScript or PCL6 | HP M130fw datasheet; `tests/fixtures/` |
 | Driverless printing | AirPrint, Mopria (IPP on TCP 631) | User guide "Mobile printing", datasheet |
 | Scan to E-mail | **Touchscreen models only** (M130fw, M132fw). SMTP server, port, optional SSL/TLS ("Always use secure connection") and SMTP AUTH are set in EWS → Scan → Outgoing E-mail Profiles | User guide ch. 6 |
 | Scan to Network Folder | Touchscreen models only (SMB share) | User guide ch. 6 |

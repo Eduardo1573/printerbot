@@ -14,7 +14,7 @@ from app.printer.ipp import Tag
 from tests.conftest import FakePrinter, make_message, make_settings
 from tests.test_ipp import FakeIppPrinter
 
-DUMP = Path(__file__).resolve().parent.parent / "docs/printer-dumps/m130fn-ipp-attributes.json"
+DUMP = Path(__file__).resolve().parent / "fixtures/m130fn-ipp-attributes.json"
 
 
 def test_parse_supplies_from_real_m130fn():

@@ -3,7 +3,7 @@
 The M129–M134 series does not interpret PDF/PostScript/PCL6, so the VPS rasterises PDFs
 before sending them over IPP — exactly what a driverless (AirPrint / Mopria) client does.
 
-Verified on a real M130fn (firmware 20170710, docs/printer-dumps/):
+Verified on a real M130fn (firmware 20170710, tests/fixtures/):
 * it advertises `image/urf` and `application/PCLm` — NOT `image/pwg-raster`, despite the
   datasheet;
 * Ghostscript's generic PCLm output makes this firmware reboot, so PCLm is never used;
