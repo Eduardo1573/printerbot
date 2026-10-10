@@ -4,6 +4,8 @@ aiosmtpd==1.4.6
 aiosqlite==0.22.1
 alembic==1.20.0
 asyncpg==0.32.0
+# pypdf needs it to open AES-encrypted (restricted) PDFs, e.g. bank statements.
+cryptography==48.0.1
 pydantic==2.13.5
 pydantic-settings==2.15.0
 pypdf==6.19.0

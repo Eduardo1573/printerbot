@@ -4,6 +4,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
+from pypdf import PdfWriter
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 
@@ -62,6 +63,30 @@ async def test_validate_pdf_rejects_password_protected(print_service, tmp_path):
     path = tmp_path / "locked.pdf"
     path.write_bytes(pdf_bytes(password="secret"))
     with pytest.raises(DocumentValidationError, match="Password"):
+        await print_service.validate_pdf(path)
+
+
+@pytest.mark.parametrize("algorithm", ["RC4-128", "AES-128", "AES-256"])
+async def test_validate_pdf_accepts_owner_password_only_pdf(print_service, tmp_path, algorithm):
+    """Restricted PDFs (bank statements etc.) open without a password and must print."""
+    writer = PdfWriter()
+    writer.add_blank_page(width=595, height=842)
+    writer.encrypt(user_password="", owner_password="owner-secret", algorithm=algorithm)
+    path = tmp_path / "restricted.pdf"
+    with path.open("wb") as fh:
+        writer.write(fh)
+    assert await print_service.validate_pdf(path) == 1
+
+
+async def test_validate_pdf_unexpected_parser_error_is_friendly(print_service, tmp_path, monkeypatch):
+    path = tmp_path / "x.pdf"
+    path.write_bytes(pdf_bytes())
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("parser exploded")
+
+    monkeypatch.setattr("app.services.print_service.PdfReader", boom)
+    with pytest.raises(DocumentValidationError, match="damaged or unreadable"):
         await print_service.validate_pdf(path)
 
 

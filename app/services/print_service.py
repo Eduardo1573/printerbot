@@ -10,7 +10,6 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 
 from pypdf import PdfReader
-from pypdf.errors import PdfReadError
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -81,7 +80,8 @@ class PrintService:
             pages = len(reader.pages)
         except DocumentValidationError:
             raise
-        except (PdfReadError, ValueError, KeyError, TypeError, AttributeError, RecursionError, NotImplementedError):
+        except Exception as exc:  # untrusted input: any parser failure means "can't print this"
+            log.warning("pdf_unreadable", extra={"fields": {"error": type(exc).__name__}})
             raise DocumentValidationError("The PDF is damaged or unreadable.") from None
         if pages == 0:
             raise DocumentValidationError("The PDF has no pages.")
