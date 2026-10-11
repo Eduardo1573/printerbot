@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     printer_verify_tls: bool = False
     printer_paper_size: Literal["a4", "letter"] = "a4"
     printer_connect_timeout: int = Field(default=10, ge=1)
+    # Seconds between background printer checks (0 = off). Regular traffic keeps
+    # Wi-Fi repeaters / bridges from forgetting the printer while it is idle.
+    printer_keepalive_interval: int = Field(default=300, ge=0)
 
     # --- Print limits ----------------------------------------------------
     # The public Telegram Bot API cannot download files larger than 20 MB.

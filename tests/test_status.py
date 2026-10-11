@@ -105,3 +105,50 @@ async def test_status_command_printer_unreachable(session_factory, settings):
     text = message.answer.call_args.args[0]
     assert text.startswith("❌ Can't get the printer status.")
     assert PrinterUnavailableError.user_message in text
+
+
+async def test_keepalive_polls_and_logs_only_state_changes(monkeypatch, caplog):
+    import asyncio
+    import logging
+
+    from app import main
+
+    outcomes = [True, True, False, False, True]
+    calls = 0
+
+    class Printer:
+        async def get_status(self):
+            nonlocal calls
+            calls += 1
+            if not outcomes.pop(0):
+                raise PrinterUnavailableError("ClientConnectorError")
+            return PrinterStatus(online=True, state="idle")
+
+    sleeps = []
+
+    async def fake_sleep(seconds):
+        sleeps.append(seconds)
+        if not outcomes:
+            raise asyncio.CancelledError
+
+    monkeypatch.setattr(main.asyncio, "sleep", fake_sleep)
+    caplog.set_level(logging.INFO, logger="app")
+    try:
+        await main.printer_keepalive(Printer(), 300)
+    except asyncio.CancelledError:
+        pass
+
+    assert calls == 5 and set(sleeps) == {300}
+    names = [r.getMessage() for r in caplog.records]
+    assert names.count("printer_went_offline") == 1
+    assert names.count("printer_back_online") == 1
+    assert names[0] == "printer_reachable"
+
+
+async def test_keepalive_disabled_checks_once(monkeypatch):
+    from app import main
+
+    printer = AsyncMock()
+    printer.get_status.return_value = PrinterStatus(online=True, state="idle")
+    await main.printer_keepalive(printer, 0)
+    assert printer.get_status.await_count == 1

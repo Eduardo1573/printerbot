@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import logging
 
 from aiogram import Router
 from aiogram.filters import Command
@@ -8,8 +9,11 @@ from aiogram.types import Message
 
 from app.bot.keyboards import main_menu
 from app.bot.middleware import AuthRequiredMiddleware
+from app.logging_setup import event
 from app.printer.base import PrinterError, PrinterStatus, Supply, describe_reasons
 from app.services.print_service import PrintService
+
+log = logging.getLogger(__name__)
 
 router = Router(name="status")
 router.message.middleware(AuthRequiredMiddleware())
@@ -57,6 +61,7 @@ async def cmd_status(message: Message, print_service: PrintService) -> None:
     try:
         status = await print_service.printer_status()
     except PrinterError as exc:
+        event(log, "status_failed", level=logging.WARNING, error=str(exc))
         await message.answer(f"❌ Can't get the printer status.\n\nReason: {exc.user_message}", reply_markup=main_menu())
         return
     await message.answer(format_status(status), reply_markup=main_menu(), parse_mode="HTML")

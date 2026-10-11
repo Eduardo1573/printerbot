@@ -115,12 +115,36 @@ async def heartbeat(engine: AsyncEngine, settings: Settings) -> None:
         await asyncio.sleep(HEARTBEAT_INTERVAL)
 
 
-async def check_printer(printer: HPIppPrinter) -> None:
+async def check_printer(printer: HPIppPrinter) -> bool:
     try:
         status = await printer.get_status()
         event(log, "printer_reachable", state=status.state, reasons=status.reasons, formats=status.document_formats)
+        return True
     except PrinterError as exc:
         event(log, "printer_connection_failed", level=logging.WARNING, error=str(exc))
+        return False
+
+
+async def printer_keepalive(printer: HPIppPrinter, interval: int) -> None:
+    """Checks the printer at startup, then every `interval` seconds (0 = startup only).
+
+    The regular traffic keeps a Wi-Fi repeater / bridge from forgetting the printer's
+    address while it is idle. Only changes between reachable and unreachable are logged.
+    """
+    reachable = await check_printer(printer)
+    while interval:
+        await asyncio.sleep(interval)
+        try:
+            await printer.get_status()
+            now_reachable, error = True, None
+        except PrinterError as exc:
+            now_reachable, error = False, str(exc)
+        if now_reachable != reachable:
+            if now_reachable:
+                event(log, "printer_back_online")
+            else:
+                event(log, "printer_went_offline", level=logging.WARNING, error=error)
+        reachable = now_reachable
 
 
 async def run() -> None:
@@ -158,7 +182,7 @@ async def run() -> None:
     tasks = [
         asyncio.create_task(scan_service.run_expiry_loop(), name="scan-expiry"),
         asyncio.create_task(heartbeat(engine, settings), name="heartbeat"),
-        asyncio.create_task(check_printer(printer), name="printer-check"),
+        asyncio.create_task(printer_keepalive(printer, settings.printer_keepalive_interval), name="printer-keepalive"),
     ]
     if scan_sessions is not None:
         tasks.append(asyncio.create_task(scan_sessions.run_expiry_loop(), name="scan-session-expiry"))
